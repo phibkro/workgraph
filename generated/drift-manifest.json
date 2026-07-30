@@ -1,0 +1,35 @@
+{
+  "canonicalDigest": "sha256:d99c656a14d79629d081f1cfbd15934aea408de808a3f889fe935215b95cdaef",
+  "files": [
+    {
+      "path": "normalized-graph.json",
+      "sha256": "d99c656a14d79629d081f1cfbd15934aea408de808a3f889fe935215b95cdaef"
+    },
+    {
+      "path": "capability-roadmap.json",
+      "sha256": "55874932e19eb0a43940b0fbf2ccab8657948963625c7a5e9c5d9c61f3432883"
+    },
+    {
+      "path": "capability-roadmap.mmd",
+      "sha256": "a4e9b16cae68eeb6c3175c4bbab58be277f7f0aad7e7e98c1b3095628ef42802"
+    },
+    {
+      "path": "dependency-schedule.json",
+      "sha256": "02132616dca68c777bafd3e86dbf853cc42919b893b8d53022ddd466a0ba739c"
+    },
+    {
+      "path": "milestone-status.md",
+      "sha256": "9b87d921588b5a779285958ac5dd2fee4b95ee31f1dd0c49fda73e7b3e55f02f"
+    },
+    {
+      "path": "transition-explanations.json",
+      "sha256": "8d2bd5bf386d6f1a4723e9e31956ff21c4fe7f2493214a62b5a1863aba85b4c1"
+    },
+    {
+      "path": "acceptance-evidence.json",
+      "sha256": "a4bd9fb9c2baa492ee0f5bb6711c36e9fd59d04358bf58b5d2791007657b9b21"
+    }
+  ],
+  "generator": "workgraph-tracer-0001-projector/1",
+  "note": "Derived views bound to the canonical digest. Regenerate and compare; never edit by hand."
+}

@@ -1,0 +1,150 @@
+{
+  "canonicalDigest": "sha256:d99c656a14d79629d081f1cfbd15934aea408de808a3f889fe935215b95cdaef",
+  "generator": "workgraph-tracer-0001-acceptance/1",
+  "items": [
+    {
+      "establishedBy": [
+        "bun test tests/acceptance-0001.test.ts :: item 1"
+      ],
+      "evidenceCategory": "machine_check",
+      "item": 1,
+      "requirement": "The fixture validates and every canonical transition has at least one typed exact basis reference."
+    },
+    {
+      "establishedBy": [
+        "bun test tests/acceptance-0001.test.ts :: item 2"
+      ],
+      "evidenceCategory": "machine_check",
+      "item": 2,
+      "requirement": "Removing or weakening a commit object ID makes the dependent transition invalid."
+    },
+    {
+      "establishedBy": [
+        "bun test tests/acceptance-0001.test.ts :: item 3"
+      ],
+      "evidenceCategory": "machine_check",
+      "item": 3,
+      "requirement": "A branch name alone cannot satisfy an exact-subject requirement."
+    },
+    {
+      "establishedBy": [
+        "bun test tests/acceptance-0001.test.ts :: item 4"
+      ],
+      "evidenceCategory": "machine_check",
+      "item": 4,
+      "requirement": "A machine check bound to commit A cannot unlock the artifact from commit B."
+    },
+    {
+      "establishedBy": [
+        "bun test tests/acceptance-0001.test.ts :: item 5",
+        "bun scripts/accept-0001.ts :: claims-scan"
+      ],
+      "evidenceCategory": "machine_check",
+      "item": 5,
+      "requirement": "A human-approved transition is accepted when policy permits it, and every generated view labels it as a human-approved assertion with machine_checked: false."
+    },
+    {
+      "establishedBy": [
+        "bun test tests/acceptance-0001.test.ts :: item 6"
+      ],
+      "evidenceCategory": "machine_check",
+      "item": 6,
+      "requirement": "An agent's untyped done assertion cannot satisfy a machine-check gate."
+    },
+    {
+      "establishedBy": [
+        "bun test tests/acceptance-0001.test.ts :: item 7"
+      ],
+      "evidenceCategory": "machine_check",
+      "item": 7,
+      "requirement": "A commit-declared transition request produces no state change until a separate observer event references the immutable resulting commit."
+    },
+    {
+      "establishedBy": [
+        "bun test tests/acceptance-0001.test.ts :: item 8"
+      ],
+      "evidenceCategory": "machine_check",
+      "item": 8,
+      "requirement": "Correcting a transition creates a superseding event and preserves the prior event."
+    },
+    {
+      "establishedBy": [
+        "bun test tests/acceptance-0001.test.ts :: item 9"
+      ],
+      "evidenceCategory": "machine_check",
+      "item": 9,
+      "requirement": "The canonical graph accepts the fixture's legal feedback cycle."
+    },
+    {
+      "establishedBy": [
+        "bun test tests/acceptance-0001.test.ts :: item 10"
+      ],
+      "evidenceCategory": "machine_check",
+      "item": 10,
+      "requirement": "A requires or contains cycle fails the applicable projection."
+    },
+    {
+      "establishedBy": [
+        "bun test tests/acceptance-0001.test.ts :: item 11"
+      ],
+      "evidenceCategory": "machine_check",
+      "item": 11,
+      "requirement": "The roadmap derives locked, available, active, achieved, stale, and blocked nodes with source-level explanations."
+    },
+    {
+      "establishedBy": [
+        "bun test tests/acceptance-0001.test.ts :: item 12"
+      ],
+      "evidenceCategory": "machine_check",
+      "item": 12,
+      "requirement": "AND and OR prerequisites unlock exactly the intended capability paths."
+    },
+    {
+      "establishedBy": [
+        "bun test tests/acceptance-0001.test.ts :: item 13",
+        "bun scripts/accept-0001.ts :: digest-binding"
+      ],
+      "evidenceCategory": "machine_check",
+      "item": 13,
+      "requirement": "Every projection carries the same canonical revision or digest."
+    },
+    {
+      "establishedBy": [
+        "bun test tests/acceptance-0001.test.ts :: item 14",
+        "bun scripts/accept-0001.ts :: drift-check"
+      ],
+      "evidenceCategory": "machine_check",
+      "item": 14,
+      "requirement": "Editing a generated projection makes the drift check fail."
+    },
+    {
+      "establishedBy": [
+        "bun scripts/accept-0001.ts :: bun-node-parity"
+      ],
+      "evidenceCategory": "machine_check",
+      "item": 15,
+      "requirement": "Bun and Node produce byte-equivalent normalized and derived bounded observations."
+    },
+    {
+      "establishedBy": [
+        "bun scripts/check-portable-imports.ts"
+      ],
+      "evidenceCategory": "machine_check",
+      "item": 16,
+      "requirement": "The portable core's transitive import closure reaches no runtime, filesystem, process, network, clock, random, GitHub, Herdr, or Semantic Systems capability."
+    },
+    {
+      "establishedBy": [
+        "bun scripts/accept-0001.ts :: claims-scan"
+      ],
+      "evidenceCategory": "machine_check",
+      "item": 17,
+      "requirement": "No unsupported proof, authentication, execution, or operational-suitability claim appears in any projection."
+    }
+  ],
+  "limitations": [
+    "Each item is established per run by the named executable checks; this manifest records the binding for the stated canonical digest, not a standing guarantee.",
+    "Machine checks establish that the named checks passed; they do not establish operational suitability, formal proof, or human intent."
+  ],
+  "spec": "design-specs/0001-truth-bound-capability-roadmap.md"
+}

@@ -1,0 +1,279 @@
+{
+  "canonicalDigest": "sha256:d99c656a14d79629d081f1cfbd15934aea408de808a3f889fe935215b95cdaef",
+  "capabilities": [
+    {
+      "capabilityId": "cap:lag-attribution",
+      "derivedStatus": {
+        "limitations": [],
+        "policy": "workgraph.policy.roadmap-derivation",
+        "policyVersion": "1",
+        "rulesFired": [
+          "rule.requires_satisfied"
+        ],
+        "sourceEdges": [
+          "edge:cap-lag-requires-design",
+          "edge:cap-lag-requires-gate"
+        ],
+        "sourceEvents": [
+          "event:design-achieved",
+          "event:gate-achieved"
+        ],
+        "sourceNodes": [
+          "design:lag-probe",
+          "gate:0001-accept"
+        ],
+        "subjectId": "cap:lag-attribution",
+        "unsatisfiedPrerequisites": [],
+        "value": "available"
+      },
+      "derivedValue": "available",
+      "maturity": {
+        "capabilityId": "cap:lag-attribution",
+        "displayLevel": "executable_tracer_observed",
+        "limitations": [
+          "Each rung is satisfied only by its own typed evidence; a later rung does not imply an earlier one."
+        ],
+        "satisfiedRungs": [
+          {
+            "rule": "rule.maturity_research_concluded",
+            "rung": "researched",
+            "sourceEdges": [
+              "edge:cap-lag-from-rq"
+            ],
+            "sourceEvents": [
+              "event:rq-achieved"
+            ],
+            "sourceNodes": [
+              "rq:lag-attribution"
+            ]
+          },
+          {
+            "rule": "rule.maturity_design_accepted",
+            "rung": "specified",
+            "sourceEdges": [
+              "edge:cap-lag-requires-design"
+            ],
+            "sourceEvents": [
+              "event:design-achieved"
+            ],
+            "sourceNodes": [
+              "design:lag-probe"
+            ]
+          },
+          {
+            "rule": "rule.maturity_machine_checked_tracer",
+            "rung": "executable_tracer_observed",
+            "sourceEdges": [
+              "edge:cap-lag-requires-gate"
+            ],
+            "sourceEvents": [
+              "event:gate-achieved"
+            ],
+            "sourceNodes": [
+              "gate:0001-accept"
+            ]
+          }
+        ],
+        "unsatisfiedRungs": [
+          "independently_reviewed",
+          "integrated",
+          "operationally_observed"
+        ]
+      },
+      "prerequisites": {
+        "andPrerequisites": [
+          {
+            "edgeId": "edge:cap-lag-requires-design",
+            "satisfied": true,
+            "targetId": "design:lag-probe"
+          },
+          {
+            "edgeId": "edge:cap-lag-requires-gate",
+            "satisfied": true,
+            "targetId": "gate:0001-accept"
+          }
+        ],
+        "orGroups": [],
+        "satisfied": true,
+        "subjectId": "cap:lag-attribution"
+      },
+      "title": "Per-stage lag attribution"
+    },
+    {
+      "capabilityId": "cap:multi-region",
+      "derivedStatus": {
+        "limitations": [],
+        "policy": "workgraph.policy.roadmap-derivation",
+        "policyVersion": "1",
+        "rulesFired": [
+          "rule.requires_unsatisfied"
+        ],
+        "sourceEdges": [
+          "edge:cap-region-requires-cap-lag"
+        ],
+        "sourceEvents": [],
+        "sourceNodes": [
+          "cap:lag-attribution"
+        ],
+        "subjectId": "cap:multi-region",
+        "unsatisfiedPrerequisites": [
+          "requires cap:lag-attribution achieved"
+        ],
+        "value": "locked"
+      },
+      "derivedValue": "locked",
+      "maturity": {
+        "capabilityId": "cap:multi-region",
+        "displayLevel": "unexplored",
+        "limitations": [
+          "Each rung is satisfied only by its own typed evidence; a later rung does not imply an earlier one."
+        ],
+        "satisfiedRungs": [],
+        "unsatisfiedRungs": [
+          "researched",
+          "specified",
+          "executable_tracer_observed",
+          "independently_reviewed",
+          "integrated",
+          "operationally_observed"
+        ]
+      },
+      "prerequisites": {
+        "andPrerequisites": [
+          {
+            "edgeId": "edge:cap-region-requires-cap-lag",
+            "satisfied": false,
+            "targetId": "cap:lag-attribution"
+          }
+        ],
+        "orGroups": [],
+        "satisfied": false,
+        "subjectId": "cap:multi-region"
+      },
+      "title": "Multi-region ingest attribution"
+    },
+    {
+      "capabilityId": "cap:replay-validation",
+      "derivedStatus": {
+        "limitations": [],
+        "policy": "workgraph.policy.roadmap-derivation",
+        "policyVersion": "1",
+        "rulesFired": [
+          "rule.requires_satisfied"
+        ],
+        "sourceEdges": [
+          "edge:cap-replay-or-harness",
+          "edge:cap-replay-or-probe"
+        ],
+        "sourceEvents": [
+          "event:exp-achieved"
+        ],
+        "sourceNodes": [
+          "exp:replay-harness",
+          "exp:lag-probe"
+        ],
+        "subjectId": "cap:replay-validation",
+        "unsatisfiedPrerequisites": [],
+        "value": "available"
+      },
+      "derivedValue": "available",
+      "maturity": {
+        "capabilityId": "cap:replay-validation",
+        "displayLevel": "executable_tracer_observed",
+        "limitations": [
+          "Each rung is satisfied only by its own typed evidence; a later rung does not imply an earlier one."
+        ],
+        "satisfiedRungs": [
+          {
+            "rule": "rule.maturity_machine_checked_tracer",
+            "rung": "executable_tracer_observed",
+            "sourceEdges": [
+              "edge:cap-replay-or-probe"
+            ],
+            "sourceEvents": [
+              "event:exp-achieved"
+            ],
+            "sourceNodes": [
+              "exp:lag-probe"
+            ]
+          }
+        ],
+        "unsatisfiedRungs": [
+          "researched",
+          "specified",
+          "independently_reviewed",
+          "integrated",
+          "operationally_observed"
+        ]
+      },
+      "prerequisites": {
+        "andPrerequisites": [],
+        "orGroups": [
+          {
+            "alternatives": [
+              {
+                "edgeId": "edge:cap-replay-or-harness",
+                "satisfied": false,
+                "targetId": "exp:replay-harness"
+              },
+              {
+                "edgeId": "edge:cap-replay-or-probe",
+                "satisfied": true,
+                "targetId": "exp:lag-probe"
+              }
+            ],
+            "group": "realization",
+            "satisfied": true
+          }
+        ],
+        "satisfied": true,
+        "subjectId": "cap:replay-validation"
+      },
+      "title": "Replay-based validation"
+    }
+  ],
+  "frontier": [
+    "cap:lag-attribution",
+    "cap:replay-validation",
+    "project:orchard"
+  ],
+  "generator": "workgraph-tracer-0001-projector/1",
+  "limitations": [
+    "Derived values are projections of accepted canonical events; they are not proofs.",
+    "Human-approved transitions remain human-approved assertions in every view."
+  ],
+  "policy": "workgraph.policy.roadmap-derivation",
+  "policyVersion": "1",
+  "unlocks": [
+    {
+      "subjectId": "cap:lag-attribution",
+      "unlocksSubjectIds": [
+        "cap:multi-region"
+      ]
+    },
+    {
+      "subjectId": "design:lag-probe",
+      "unlocksSubjectIds": [
+        "cap:lag-attribution"
+      ]
+    },
+    {
+      "subjectId": "exp:lag-probe",
+      "unlocksSubjectIds": [
+        "cap:replay-validation"
+      ]
+    },
+    {
+      "subjectId": "exp:replay-harness",
+      "unlocksSubjectIds": [
+        "cap:replay-validation"
+      ]
+    },
+    {
+      "subjectId": "gate:0001-accept",
+      "unlocksSubjectIds": [
+        "cap:lag-attribution"
+      ]
+    }
+  ]
+}

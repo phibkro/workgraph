@@ -1,0 +1,686 @@
+{
+  "edges": [
+    {
+      "from": "approval:design-freeze",
+      "id": "edge:approval-supports-design",
+      "kind": "supports",
+      "to": "design:lag-probe"
+    },
+    {
+      "from": "risk:steady-clock",
+      "id": "edge:assumption-blocks-replay",
+      "kind": "blocks",
+      "to": "exp:replay-harness"
+    },
+    {
+      "from": "cap:lag-attribution",
+      "id": "edge:cap-lag-from-rq",
+      "kind": "derived_from",
+      "to": "rq:lag-attribution"
+    },
+    {
+      "from": "cap:lag-attribution",
+      "id": "edge:cap-lag-requires-design",
+      "kind": "requires",
+      "to": "design:lag-probe"
+    },
+    {
+      "from": "cap:lag-attribution",
+      "id": "edge:cap-lag-requires-gate",
+      "kind": "requires",
+      "to": "gate:0001-accept"
+    },
+    {
+      "from": "cap:multi-region",
+      "id": "edge:cap-region-requires-cap-lag",
+      "kind": "requires",
+      "to": "cap:lag-attribution"
+    },
+    {
+      "attributes": {
+        "orGroup": "realization"
+      },
+      "from": "cap:replay-validation",
+      "id": "edge:cap-replay-or-harness",
+      "kind": "requires",
+      "to": "exp:replay-harness"
+    },
+    {
+      "attributes": {
+        "orGroup": "realization"
+      },
+      "from": "cap:replay-validation",
+      "id": "edge:cap-replay-or-probe",
+      "kind": "requires",
+      "to": "exp:lag-probe"
+    },
+    {
+      "from": "decision:evidence-first",
+      "id": "edge:decision-supports-design",
+      "kind": "supports",
+      "to": "design:lag-probe"
+    },
+    {
+      "from": "design:lag-probe",
+      "id": "edge:design-from-rq",
+      "kind": "derived_from",
+      "to": "rq:lag-attribution"
+    },
+    {
+      "from": "exp:lag-probe",
+      "id": "edge:exp-implements-design",
+      "kind": "implements",
+      "to": "design:lag-probe"
+    },
+    {
+      "from": "exp:lag-probe",
+      "id": "edge:exp-observed-by-session",
+      "kind": "observed_by",
+      "to": "session:amber"
+    },
+    {
+      "from": "gate:0001-accept",
+      "id": "edge:gate-evaluates-exp",
+      "kind": "evaluates",
+      "to": "exp:lag-probe"
+    },
+    {
+      "from": "ev:clock-skew-incident",
+      "id": "edge:incident-contradicts-assumption",
+      "kind": "contradicts",
+      "to": "risk:steady-clock"
+    },
+    {
+      "from": "ms:0001",
+      "id": "edge:ms-contains-design",
+      "kind": "contains",
+      "to": "design:lag-probe"
+    },
+    {
+      "from": "ms:0001",
+      "id": "edge:ms-contains-exp",
+      "kind": "contains",
+      "to": "exp:lag-probe"
+    },
+    {
+      "from": "ms:0001",
+      "id": "edge:ms-contains-gate",
+      "kind": "contains",
+      "to": "gate:0001-accept"
+    },
+    {
+      "from": "project:orchard",
+      "id": "edge:project-contains-approval",
+      "kind": "contains",
+      "to": "approval:design-freeze"
+    },
+    {
+      "from": "project:orchard",
+      "id": "edge:project-contains-artifact",
+      "kind": "contains",
+      "to": "artifact:probe-report"
+    },
+    {
+      "from": "project:orchard",
+      "id": "edge:project-contains-cap-lag",
+      "kind": "contains",
+      "to": "cap:lag-attribution"
+    },
+    {
+      "from": "project:orchard",
+      "id": "edge:project-contains-cap-region",
+      "kind": "contains",
+      "to": "cap:multi-region"
+    },
+    {
+      "from": "project:orchard",
+      "id": "edge:project-contains-cap-replay",
+      "kind": "contains",
+      "to": "cap:replay-validation"
+    },
+    {
+      "from": "project:orchard",
+      "id": "edge:project-contains-decision",
+      "kind": "contains",
+      "to": "decision:evidence-first"
+    },
+    {
+      "from": "project:orchard",
+      "id": "edge:project-contains-evidence",
+      "kind": "contains",
+      "to": "ev:clock-skew-incident"
+    },
+    {
+      "from": "project:orchard",
+      "id": "edge:project-contains-ms",
+      "kind": "contains",
+      "to": "ms:0001"
+    },
+    {
+      "from": "project:orchard",
+      "id": "edge:project-contains-replay-exp",
+      "kind": "contains",
+      "to": "exp:replay-harness"
+    },
+    {
+      "from": "project:orchard",
+      "id": "edge:project-contains-risk",
+      "kind": "contains",
+      "to": "risk:steady-clock"
+    },
+    {
+      "from": "project:orchard",
+      "id": "edge:project-contains-rq",
+      "kind": "contains",
+      "to": "rq:lag-attribution"
+    },
+    {
+      "from": "project:orchard",
+      "id": "edge:project-contains-session",
+      "kind": "contains",
+      "to": "session:amber"
+    },
+    {
+      "from": "artifact:probe-report",
+      "id": "edge:report-from-exp",
+      "kind": "derived_from",
+      "to": "exp:lag-probe"
+    },
+    {
+      "from": "rq:lag-attribution",
+      "id": "edge:rq-supports-design",
+      "kind": "supports",
+      "to": "design:lag-probe"
+    }
+  ],
+  "events": [
+    {
+      "actor": "operator:frost",
+      "authority": "administrative_assertion",
+      "basis": [
+        {
+          "algorithm": "sha256",
+          "digest": "2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+          "kind": "artifact",
+          "mediaType": "text/markdown",
+          "producedBy": "research-notebook/v1"
+        }
+      ],
+      "evidenceCategory": "agent_assertion",
+      "id": "event:rq-active",
+      "observedAt": "2026-07-28T09:00:00Z",
+      "policy": "workgraph.policy.administrative",
+      "policyVersion": "1",
+      "priorState": null,
+      "rationale": "Research opened; the note artifact records the framing.",
+      "requestedState": "active",
+      "subjectId": "rq:lag-attribution",
+      "transitionKind": "advance"
+    },
+    {
+      "actor": "operator:frost",
+      "authority": "administrative_assertion",
+      "basis": [
+        {
+          "algorithm": "sha256",
+          "digest": "4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d",
+          "kind": "artifact",
+          "mediaType": "text/markdown",
+          "producedBy": "decision-log/v1"
+        }
+      ],
+      "evidenceCategory": "agent_assertion",
+      "id": "event:decision-adopted",
+      "observedAt": "2026-07-28T10:00:00Z",
+      "policy": "workgraph.policy.administrative",
+      "policyVersion": "1",
+      "priorState": null,
+      "rationale": "Decision recorded as an operator assertion, not a machine result.",
+      "requestedState": "achieved",
+      "subjectId": "decision:evidence-first",
+      "transitionKind": "advance"
+    },
+    {
+      "actor": "operator:frost",
+      "authority": "administrative_assertion",
+      "basis": [
+        {
+          "algorithm": "sha256",
+          "digest": "5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e",
+          "kind": "artifact",
+          "mediaType": "text/markdown",
+          "producedBy": "risk-register/v1"
+        }
+      ],
+      "evidenceCategory": "assumption",
+      "id": "event:risk-assumed",
+      "observedAt": "2026-07-28T11:00:00Z",
+      "policy": "workgraph.policy.administrative",
+      "policyVersion": "1",
+      "priorState": null,
+      "rationale": "The steady-clock assumption is accepted as holding, explicitly as an assumption.",
+      "requestedState": "achieved",
+      "subjectId": "risk:steady-clock",
+      "transitionKind": "advance"
+    },
+    {
+      "actor": "operator:frost",
+      "authority": "administrative_assertion",
+      "basis": [
+        {
+          "algorithm": "sha256",
+          "digest": "3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c",
+          "kind": "artifact",
+          "mediaType": "text/markdown",
+          "producedBy": "research-notebook/v1"
+        }
+      ],
+      "evidenceCategory": "agent_assertion",
+      "id": "event:rq-achieved",
+      "observedAt": "2026-07-28T17:00:00Z",
+      "policy": "workgraph.policy.administrative",
+      "policyVersion": "1",
+      "priorState": "active",
+      "rationale": "Research concluded; the summary artifact is an assertion, not a machine check.",
+      "requestedState": "achieved",
+      "subjectId": "rq:lag-attribution",
+      "transitionKind": "advance"
+    },
+    {
+      "actor": "adapter:terminal-multiplexer",
+      "authority": "imported_observation",
+      "basis": [
+        {
+          "interpretation": "The provider reports a live session; this is an observation about the provider only.",
+          "kind": "external_record",
+          "observedAt": "2026-07-29T08:00:00Z",
+          "observedVersion": "42",
+          "project": "orchard",
+          "provider": "fictional-terminal-multiplexer",
+          "recordId": "session/amber-7"
+        }
+      ],
+      "evidenceCategory": "external_observation",
+      "id": "event:session-active",
+      "observedAt": "2026-07-29T08:00:05Z",
+      "policy": "workgraph.policy.imported-observation",
+      "policyVersion": "1",
+      "priorState": null,
+      "rationale": "An external session record was observed; it asserts liveness, nothing more.",
+      "requestedState": "active",
+      "subjectId": "session:amber",
+      "transitionKind": "advance"
+    },
+    {
+      "actor": "adapter:terminal-multiplexer",
+      "authority": "imported_observation",
+      "basis": [
+        {
+          "kind": "git_commit",
+          "mutableContext": "work/lag-probe-tracer",
+          "objectFormat": "sha1",
+          "objectId": "f00dfeedc0ffee5eedbeadfacade0fabb1e5c0de",
+          "observedBy": "fixture-git-object-observer/v1",
+          "repository": "https://example.invalid/fictional/orchard-telemetry"
+        },
+        {
+          "interpretation": "The session record names this experiment as its working subject.",
+          "kind": "external_record",
+          "observedAt": "2026-07-29T08:10:00Z",
+          "observedVersion": "43",
+          "project": "orchard",
+          "provider": "fictional-terminal-multiplexer",
+          "recordId": "session/amber-7"
+        }
+      ],
+      "evidenceCategory": "external_observation",
+      "id": "event:exp-active",
+      "observedAt": "2026-07-29T08:10:05Z",
+      "policy": "workgraph.policy.imported-observation",
+      "policyVersion": "1",
+      "priorState": null,
+      "rationale": "The observed session started work on the experiment's exact commit.",
+      "requestedState": "active",
+      "subjectId": "exp:lag-probe",
+      "transitionKind": "advance"
+    },
+    {
+      "actor": "operator:frost",
+      "authority": "human_approval",
+      "basis": [
+        {
+          "actor": "operator:frost",
+          "approvedAt": "2026-07-29T10:00:00Z",
+          "approvedTransition": "achieved",
+          "authentication": "unverified",
+          "authorityScope": "project:orchard/design-freeze",
+          "evidenceCategory": "human_approved_assertion",
+          "kind": "human_approval",
+          "machineChecked": false,
+          "rationale": "Operator freezes the lag-probe design after reading the full draft.",
+          "subjects": [
+            {
+              "algorithm": "sha256",
+              "digest": "1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a",
+              "kind": "artifact",
+              "locator": "design-specs/lag-probe.md",
+              "mediaType": "text/markdown",
+              "producedBy": "design-freeze-editor/v1"
+            }
+          ]
+        }
+      ],
+      "evidenceCategory": "human_approved_assertion",
+      "id": "event:design-achieved",
+      "observedAt": "2026-07-29T10:00:05Z",
+      "policy": "workgraph.policy.human-approval",
+      "policyVersion": "1",
+      "priorState": null,
+      "rationale": "The operator approved the design freeze. This is a human-approved assertion and is not machine checked.",
+      "requestedState": "achieved",
+      "subjectId": "design:lag-probe",
+      "transitionKind": "advance"
+    },
+    {
+      "actor": "operator:frost",
+      "authority": "human_approval",
+      "basis": [
+        {
+          "actor": "operator:frost",
+          "approvedAt": "2026-07-29T10:00:00Z",
+          "approvedTransition": "achieved",
+          "authentication": "unverified",
+          "authorityScope": "project:orchard/design-freeze",
+          "evidenceCategory": "human_approved_assertion",
+          "kind": "human_approval",
+          "machineChecked": false,
+          "rationale": "Operator freezes the lag-probe design after reading the full draft.",
+          "subjects": [
+            {
+              "algorithm": "sha256",
+              "digest": "1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a",
+              "kind": "artifact",
+              "locator": "design-specs/lag-probe.md",
+              "mediaType": "text/markdown",
+              "producedBy": "design-freeze-editor/v1"
+            }
+          ]
+        }
+      ],
+      "evidenceCategory": "human_approved_assertion",
+      "id": "event:approval-recorded",
+      "observedAt": "2026-07-29T10:00:06Z",
+      "policy": "workgraph.policy.human-approval",
+      "policyVersion": "1",
+      "priorState": null,
+      "rationale": "The approval record itself is recorded as a human-approved assertion.",
+      "requestedState": "achieved",
+      "subjectId": "approval:design-freeze",
+      "transitionKind": "advance"
+    },
+    {
+      "actor": "workgraph.policy.machine-check/v1",
+      "authority": "machine_policy",
+      "basis": [
+        {
+          "checker": "lag-probe-check",
+          "checkerVersion": "3.1.4",
+          "environment": "fixture-runner/linux-x64",
+          "exitCode": 0,
+          "kind": "machine_check",
+          "observedAt": "2026-07-29T15:20:00Z",
+          "operation": "probe --replay window=24h",
+          "output": {
+            "algorithm": "sha256",
+            "digest": "7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a",
+            "kind": "artifact",
+            "mediaType": "text/plain",
+            "producedBy": "lag-probe-check/v3"
+          },
+          "policy": "orchard.policy.probe-acceptance/v1",
+          "result": "passed",
+          "subjects": [
+            {
+              "kind": "git_commit",
+              "mutableContext": "work/lag-probe-tracer",
+              "objectFormat": "sha1",
+              "objectId": "f00dfeedc0ffee5eedbeadfacade0fabb1e5c0de",
+              "observedBy": "fixture-git-object-observer/v1",
+              "repository": "https://example.invalid/fictional/orchard-telemetry"
+            }
+          ]
+        }
+      ],
+      "evidenceCategory": "machine_check",
+      "id": "event:exp-achieved",
+      "observedAt": "2026-07-29T15:20:05Z",
+      "policy": "workgraph.policy.machine-check",
+      "policyVersion": "1",
+      "priorState": "active",
+      "rationale": "The bound probe check passed against the exact tracer commit.",
+      "requestedState": "achieved",
+      "subjectId": "exp:lag-probe",
+      "transitionKind": "advance"
+    },
+    {
+      "actor": "workgraph.policy.machine-check/v1",
+      "authority": "machine_policy",
+      "basis": [
+        {
+          "checker": "acceptance-runner",
+          "checkerVersion": "2.0.0",
+          "environment": "fixture-runner/linux-x64",
+          "exitCode": 0,
+          "kind": "machine_check",
+          "observedAt": "2026-07-29T16:05:00Z",
+          "operation": "accept --gate 0001",
+          "output": {
+            "algorithm": "sha256",
+            "digest": "8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b",
+            "kind": "artifact",
+            "mediaType": "text/plain",
+            "producedBy": "acceptance-runner/v2"
+          },
+          "policy": "orchard.policy.gate-0001/v1",
+          "result": "passed",
+          "subjects": [
+            {
+              "kind": "git_commit",
+              "mutableContext": "work/lag-probe-tracer",
+              "objectFormat": "sha1",
+              "objectId": "f00dfeedc0ffee5eedbeadfacade0fabb1e5c0de",
+              "observedBy": "fixture-git-object-observer/v1",
+              "repository": "https://example.invalid/fictional/orchard-telemetry"
+            }
+          ]
+        }
+      ],
+      "evidenceCategory": "machine_check",
+      "id": "event:gate-achieved",
+      "observedAt": "2026-07-29T16:05:05Z",
+      "policy": "workgraph.policy.machine-check",
+      "policyVersion": "1",
+      "priorState": null,
+      "rationale": "The acceptance gate's bound runner passed against the exact tracer commit.",
+      "requestedState": "achieved",
+      "subjectId": "gate:0001-accept",
+      "transitionKind": "advance"
+    },
+    {
+      "actor": "operator:frost",
+      "authority": "administrative_assertion",
+      "basis": [
+        {
+          "algorithm": "sha256",
+          "digest": "6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f",
+          "kind": "artifact",
+          "locator": "reports/lag-probe.json",
+          "mediaType": "application/json",
+          "producedBy": "lag-probe-check/v3"
+        }
+      ],
+      "evidenceCategory": "agent_assertion",
+      "id": "event:report-registered",
+      "observedAt": "2026-07-29T16:10:00Z",
+      "policy": "workgraph.policy.administrative",
+      "policyVersion": "1",
+      "priorState": null,
+      "rationale": "The report artifact is registered by digest; the digest is its identity.",
+      "requestedState": "achieved",
+      "subjectId": "artifact:probe-report",
+      "transitionKind": "advance"
+    },
+    {
+      "actor": "adapter:ops-import",
+      "authority": "imported_observation",
+      "basis": [
+        {
+          "interpretation": "The monitor reports 40ms clock skew across hosts, contradicting the steady-clock assumption.",
+          "kind": "external_record",
+          "observedAt": "2026-07-30T02:00:00Z",
+          "project": "orchard",
+          "provider": "fictional-ops-monitor",
+          "recordId": "incident/2026-07-30-clock-skew"
+        }
+      ],
+      "evidenceCategory": "external_observation",
+      "id": "event:clock-skew-observed",
+      "observedAt": "2026-07-30T02:00:05Z",
+      "policy": "workgraph.policy.imported-observation",
+      "policyVersion": "1",
+      "priorState": null,
+      "rationale": "A failing operational observation was imported. Earlier accepted history is preserved; a revision frontier is derived instead.",
+      "requestedState": "achieved",
+      "subjectId": "ev:clock-skew-incident",
+      "transitionKind": "advance"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "approval:design-freeze",
+      "kind": "human_approval",
+      "title": "Operator approval of the design freeze"
+    },
+    {
+      "exactSubject": {
+        "algorithm": "sha256",
+        "digest": "6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f",
+        "kind": "artifact",
+        "locator": "reports/lag-probe.json",
+        "mediaType": "application/json",
+        "producedBy": "lag-probe-check/v3"
+      },
+      "id": "artifact:probe-report",
+      "kind": "artifact",
+      "title": "Lag-probe run report"
+    },
+    {
+      "id": "cap:lag-attribution",
+      "kind": "capability",
+      "title": "Per-stage lag attribution"
+    },
+    {
+      "id": "cap:multi-region",
+      "kind": "capability",
+      "title": "Multi-region ingest attribution"
+    },
+    {
+      "id": "cap:replay-validation",
+      "kind": "capability",
+      "title": "Replay-based validation"
+    },
+    {
+      "id": "decision:evidence-first",
+      "kind": "decision",
+      "title": "Adopt the evidence-first transition flow"
+    },
+    {
+      "exactSubject": {
+        "algorithm": "sha256",
+        "digest": "1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a",
+        "kind": "artifact",
+        "locator": "design-specs/lag-probe.md",
+        "mediaType": "text/markdown",
+        "producedBy": "design-freeze-editor/v1"
+      },
+      "id": "design:lag-probe",
+      "kind": "design_contract",
+      "title": "Frozen lag-probe design"
+    },
+    {
+      "attributes": {
+        "category": "operational_observation"
+      },
+      "id": "ev:clock-skew-incident",
+      "kind": "evidence",
+      "title": "Operational clock-skew incident report"
+    },
+    {
+      "exactSubject": {
+        "kind": "git_commit",
+        "mutableContext": "work/lag-probe-tracer",
+        "objectFormat": "sha1",
+        "objectId": "f00dfeedc0ffee5eedbeadfacade0fabb1e5c0de",
+        "observedBy": "fixture-git-object-observer/v1",
+        "repository": "https://example.invalid/fictional/orchard-telemetry"
+      },
+      "id": "exp:lag-probe",
+      "kind": "work_item",
+      "title": "Lag-probe tracer experiment"
+    },
+    {
+      "id": "exp:replay-harness",
+      "kind": "work_item",
+      "title": "Alternative replay harness experiment"
+    },
+    {
+      "exactSubject": {
+        "kind": "git_commit",
+        "mutableContext": "work/lag-probe-tracer",
+        "objectFormat": "sha1",
+        "objectId": "f00dfeedc0ffee5eedbeadfacade0fabb1e5c0de",
+        "observedBy": "fixture-git-object-observer/v1",
+        "repository": "https://example.invalid/fictional/orchard-telemetry"
+      },
+      "id": "gate:0001-accept",
+      "kind": "acceptance_gate",
+      "title": "Tracer acceptance gate 0001"
+    },
+    {
+      "id": "ms:0001",
+      "kind": "milestone",
+      "title": "Milestone 0001: lag-probe tracer accepted"
+    },
+    {
+      "id": "project:orchard",
+      "kind": "project",
+      "title": "Orchard Telemetry"
+    },
+    {
+      "id": "risk:steady-clock",
+      "kind": "risk",
+      "title": "Assumption: host clocks are steady within 5ms"
+    },
+    {
+      "id": "rq:lag-attribution",
+      "kind": "research_question",
+      "title": "Can ingest lag be attributed per pipeline stage?"
+    },
+    {
+      "id": "session:amber",
+      "kind": "agent_session",
+      "title": "Agent session amber"
+    }
+  ],
+  "requests": [
+    {
+      "declaredBy": "agent:amber",
+      "declaredInRepository": "https://example.invalid/fictional/orchard-telemetry",
+      "id": "request:activate-replay",
+      "rationale": "A commit declares intent to start the replay harness. No observer event references a resulting immutable commit yet, so no state change occurs.",
+      "requestedState": "active",
+      "subjectId": "exp:replay-harness"
+    }
+  ],
+  "schemaVersion": "workgraph/v1alpha1"
+}

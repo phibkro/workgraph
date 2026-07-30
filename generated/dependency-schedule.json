@@ -1,0 +1,86 @@
+{
+  "canonicalDigest": "sha256:d99c656a14d79629d081f1cfbd15934aea408de808a3f889fe935215b95cdaef",
+  "edgeKinds": [
+    "requires"
+  ],
+  "entries": [
+    {
+      "dependsOn": [
+        {
+          "targetId": "design:lag-probe"
+        },
+        {
+          "targetId": "gate:0001-accept"
+        }
+      ],
+      "derivedValue": "available",
+      "kind": "capability",
+      "layer": 1,
+      "subjectId": "cap:lag-attribution",
+      "title": "Per-stage lag attribution"
+    },
+    {
+      "dependsOn": [
+        {
+          "targetId": "cap:lag-attribution"
+        }
+      ],
+      "derivedValue": "locked",
+      "kind": "capability",
+      "layer": 2,
+      "subjectId": "cap:multi-region",
+      "title": "Multi-region ingest attribution"
+    },
+    {
+      "dependsOn": [
+        {
+          "orGroup": "realization",
+          "targetId": "exp:lag-probe"
+        },
+        {
+          "orGroup": "realization",
+          "targetId": "exp:replay-harness"
+        }
+      ],
+      "derivedValue": "available",
+      "kind": "capability",
+      "layer": 1,
+      "subjectId": "cap:replay-validation",
+      "title": "Replay-based validation"
+    },
+    {
+      "dependsOn": [],
+      "derivedValue": "achieved",
+      "kind": "design_contract",
+      "layer": 0,
+      "subjectId": "design:lag-probe",
+      "title": "Frozen lag-probe design"
+    },
+    {
+      "dependsOn": [],
+      "derivedValue": "achieved",
+      "kind": "work_item",
+      "layer": 0,
+      "subjectId": "exp:lag-probe",
+      "title": "Lag-probe tracer experiment"
+    },
+    {
+      "dependsOn": [],
+      "derivedValue": "blocked",
+      "kind": "work_item",
+      "layer": 0,
+      "subjectId": "exp:replay-harness",
+      "title": "Alternative replay harness experiment"
+    },
+    {
+      "dependsOn": [],
+      "derivedValue": "achieved",
+      "kind": "acceptance_gate",
+      "layer": 0,
+      "subjectId": "gate:0001-accept",
+      "title": "Tracer acceptance gate 0001"
+    }
+  ],
+  "generator": "workgraph-tracer-0001-projector/1",
+  "note": "This schedule is a derived acyclic projection, not the canonical graph."
+}
