@@ -280,12 +280,15 @@ const milestoneMarkdown = (
       const node = nodesById.get(member.to);
       const memberStatus = statusById.get(member.to);
       const event = achievingEvent.get(member.to);
+      // "machine-checked against its exact subject" is claimed only for
+      // machine_policy authority, where the validator enforces that a passing
+      // check itself names the subject's exact reference.
       const authorityNote =
         event === undefined
           ? "no canonical transition"
           : event.evidenceCategory === "human_approved_assertion"
             ? "human-approved assertion; machine_checked: false"
-            : event.evidenceCategory === "machine_check"
+            : event.evidenceCategory === "machine_check" && event.authority === "machine_policy"
               ? "machine-checked against its exact subject"
               : `recorded as ${event.evidenceCategory}`;
       lines.push(
@@ -366,7 +369,7 @@ export const projectAll = (
     })),
     unlocks: derivation.unlocks,
     limitations: [
-      "Derived values are projections of accepted canonical events; they are not proofs.",
+      "Derived values are projections of accepted canonical events; they claim nothing beyond their sources.",
       "Human-approved transitions remain human-approved assertions in every view.",
     ],
   };

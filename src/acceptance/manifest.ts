@@ -133,7 +133,7 @@ export const acceptanceEvidence: ReadonlyArray<AcceptanceEvidenceItem> = [
   {
     item: 17,
     requirement:
-      "No unsupported proof, authentication, execution, or operational-suitability claim appears in any projection.",
+      "No projection claims more than its evidence category supports; the shared forbidden-claim vocabulary matches nothing in any generated view.",
     establishedBy: ["bun scripts/accept-0001.ts :: claims-scan"],
     evidenceCategory: "machine_check",
   },
@@ -145,7 +145,7 @@ export const evidenceManifest = (canonicalDigest: string): Readonly<Record<strin
   generator: "workgraph-tracer-0001-acceptance/1",
   items: acceptanceEvidence,
   limitations: [
-    "Each item is established per run by the named executable checks; this manifest records the binding for the stated canonical digest, not a standing guarantee.",
-    "Machine checks establish that the named checks passed; they do not establish operational suitability, formal proof, or human intent.",
+    "Each item is established per run by the named executable checks; the binding holds for the stated canonical digest and that run only.",
+    "The named checks passing is the entire claim; no stronger evidence category is implied, and human intent is never machine-established.",
   ],
 });

@@ -10,6 +10,7 @@ import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Console, Effect } from "effect";
+import { unsupportedClaimFindings } from "../src/acceptance/claims.ts";
 import { ACCEPTANCE_TEST_FILE, acceptanceEvidence } from "../src/acceptance/manifest.ts";
 
 const projectRoot = import.meta.dir.endsWith("/scripts")
@@ -114,15 +115,6 @@ const compareDirectories = (section: string, leftDir: string, rightDir: string) 
     yield* Console.log(`→ [${section}] directories are byte-equivalent`);
   });
 
-const FORBIDDEN_CLAIMS = [
-  "formally proven",
-  "proven correct",
-  "guaranteed",
-  "tamper-proof",
-  "operationally suitable",
-  "cryptographically verified",
-] as const;
-
 const claimsScan = Effect.gen(function* () {
   const generatedDir = join(projectRoot, "generated");
   const problems = yield* Effect.promise(async () => {
@@ -130,34 +122,44 @@ const claimsScan = Effect.gen(function* () {
     const phraseFindings = await Promise.all(
       files.map(async (name) => {
         const content = await readFile(join(generatedDir, name), "utf8");
-        const lowered = content.toLowerCase();
-        return FORBIDDEN_CLAIMS.filter((phrase) => lowered.includes(phrase)).map(
-          (phrase) => `${name}: contains unsupported claim phrase '${phrase}'`,
+        return unsupportedClaimFindings(content).map(
+          (claim) => `${name}: matches unsupported claim pattern '${claim}'`,
         );
       }),
     );
     const found: Array<string> = phraseFindings.flat();
+
+    // Cross-file check against the canonical source, not the projection
+    // against itself: every human-approval event in the normalized graph must
+    // be labeled as a non-machine-checked human assertion in the explanation
+    // view. Checking the projection's own derived fields against each other
+    // would only re-confirm the projector.
+    const canonical = JSON.parse(
+      await readFile(join(generatedDir, "normalized-graph.json"), "utf8"),
+    ) as { events: ReadonlyArray<{ id: string; authority: string }> };
     const explanations = JSON.parse(
       await readFile(join(generatedDir, "transition-explanations.json"), "utf8"),
     ) as {
       events: ReadonlyArray<{
         id: string;
-        authority: string;
         evidenceCategory: string;
         machineChecked: boolean;
+        humanApprovedAssertion: boolean;
       }>;
     };
-    for (const event of explanations.events) {
-      if (event.authority === "human_approval") {
-        if (
-          event.machineChecked !== false ||
-          event.evidenceCategory !== "human_approved_assertion"
-        ) {
-          found.push(`${event.id}: human approval is not labeled as a human-approved assertion`);
-        }
-      }
-      if (event.evidenceCategory !== "machine_check" && event.machineChecked !== false) {
-        found.push(`${event.id}: non-machine-check evidence claims machineChecked`);
+    const explanationById = new Map(explanations.events.map((event) => [event.id, event]));
+    for (const event of canonical.events) {
+      if (event.authority !== "human_approval") continue;
+      const explained = explanationById.get(event.id);
+      if (
+        explained === undefined ||
+        explained.machineChecked !== false ||
+        explained.evidenceCategory !== "human_approved_assertion" ||
+        explained.humanApprovedAssertion !== true
+      ) {
+        found.push(
+          `${event.id}: canonical human-approval event is not labeled as a non-machine-checked human assertion in the explanation view`,
+        );
       }
     }
     return found;
