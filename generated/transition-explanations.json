@@ -1,0 +1,788 @@
+{
+  "canonicalDigest": "sha256:6b5e49508246f9f1d1ef8f827c1ca2587072fd633c5ea6f8aa27c896c9475fbe",
+  "derivationPolicy": {
+    "policy": "workgraph.policy.roadmap-derivation",
+    "policyVersion": "1"
+  },
+  "derivedStatuses": [
+    {
+      "limitations": [],
+      "policy": "workgraph.policy.roadmap-derivation",
+      "policyVersion": "1",
+      "rulesFired": [
+        "rule.event_lifecycle"
+      ],
+      "sourceEdges": [],
+      "sourceEvents": [
+        "event:approval-recorded"
+      ],
+      "sourceNodes": [
+        "approval:design-freeze"
+      ],
+      "subjectId": "approval:design-freeze",
+      "unsatisfiedPrerequisites": [],
+      "value": "achieved"
+    },
+    {
+      "limitations": [],
+      "policy": "workgraph.policy.roadmap-derivation",
+      "policyVersion": "1",
+      "rulesFired": [
+        "rule.event_lifecycle"
+      ],
+      "sourceEdges": [],
+      "sourceEvents": [
+        "event:report-registered"
+      ],
+      "sourceNodes": [
+        "artifact:probe-report"
+      ],
+      "subjectId": "artifact:probe-report",
+      "unsatisfiedPrerequisites": [],
+      "value": "achieved"
+    },
+    {
+      "limitations": [
+        "Optional branches remain unsatisfied without locking this subject: exp:replay-harness."
+      ],
+      "policy": "workgraph.policy.roadmap-derivation",
+      "policyVersion": "1",
+      "rulesFired": [
+        "rule.requires_satisfied",
+        "rule.optional_branches_non_blocking"
+      ],
+      "sourceEdges": [
+        "edge:cap-lag-optional-replay",
+        "edge:cap-lag-requires-design",
+        "edge:cap-lag-requires-gate"
+      ],
+      "sourceEvents": [
+        "event:design-achieved",
+        "event:gate-achieved"
+      ],
+      "sourceNodes": [
+        "exp:replay-harness",
+        "design:lag-probe",
+        "gate:0001-accept"
+      ],
+      "subjectId": "cap:lag-attribution",
+      "unsatisfiedPrerequisites": [],
+      "value": "available"
+    },
+    {
+      "limitations": [],
+      "policy": "workgraph.policy.roadmap-derivation",
+      "policyVersion": "1",
+      "rulesFired": [
+        "rule.requires_unsatisfied"
+      ],
+      "sourceEdges": [
+        "edge:cap-region-requires-cap-lag"
+      ],
+      "sourceEvents": [],
+      "sourceNodes": [
+        "cap:lag-attribution"
+      ],
+      "subjectId": "cap:multi-region",
+      "unsatisfiedPrerequisites": [
+        "requires cap:lag-attribution achieved"
+      ],
+      "value": "locked"
+    },
+    {
+      "limitations": [],
+      "policy": "workgraph.policy.roadmap-derivation",
+      "policyVersion": "1",
+      "rulesFired": [
+        "rule.requires_satisfied"
+      ],
+      "sourceEdges": [
+        "edge:cap-replay-or-harness",
+        "edge:cap-replay-or-probe"
+      ],
+      "sourceEvents": [
+        "event:exp-achieved"
+      ],
+      "sourceNodes": [
+        "exp:replay-harness",
+        "exp:lag-probe"
+      ],
+      "subjectId": "cap:replay-validation",
+      "unsatisfiedPrerequisites": [],
+      "value": "available"
+    },
+    {
+      "limitations": [],
+      "policy": "workgraph.policy.roadmap-derivation",
+      "policyVersion": "1",
+      "rulesFired": [
+        "rule.event_lifecycle"
+      ],
+      "sourceEdges": [],
+      "sourceEvents": [
+        "event:decision-adopted"
+      ],
+      "sourceNodes": [
+        "decision:evidence-first"
+      ],
+      "subjectId": "decision:evidence-first",
+      "unsatisfiedPrerequisites": [],
+      "value": "achieved"
+    },
+    {
+      "limitations": [],
+      "policy": "workgraph.policy.roadmap-derivation",
+      "policyVersion": "1",
+      "rulesFired": [
+        "rule.event_lifecycle"
+      ],
+      "sourceEdges": [],
+      "sourceEvents": [
+        "event:design-achieved"
+      ],
+      "sourceNodes": [
+        "design:lag-probe"
+      ],
+      "subjectId": "design:lag-probe",
+      "unsatisfiedPrerequisites": [],
+      "value": "achieved"
+    },
+    {
+      "limitations": [],
+      "policy": "workgraph.policy.roadmap-derivation",
+      "policyVersion": "1",
+      "rulesFired": [
+        "rule.event_lifecycle"
+      ],
+      "sourceEdges": [],
+      "sourceEvents": [
+        "event:clock-skew-observed"
+      ],
+      "sourceNodes": [
+        "ev:clock-skew-incident"
+      ],
+      "subjectId": "ev:clock-skew-incident",
+      "unsatisfiedPrerequisites": [],
+      "value": "achieved"
+    },
+    {
+      "limitations": [],
+      "policy": "workgraph.policy.roadmap-derivation",
+      "policyVersion": "1",
+      "rulesFired": [
+        "rule.event_lifecycle"
+      ],
+      "sourceEdges": [],
+      "sourceEvents": [
+        "event:exp-achieved"
+      ],
+      "sourceNodes": [
+        "exp:lag-probe"
+      ],
+      "subjectId": "exp:lag-probe",
+      "unsatisfiedPrerequisites": [],
+      "value": "achieved"
+    },
+    {
+      "limitations": [
+        "No transition history and no declared prerequisites.",
+        "Blocking explanation includes the blocker lifecycle and live contradiction observations; it does not infer causal facts beyond those graph relations."
+      ],
+      "policy": "workgraph.policy.roadmap-derivation",
+      "policyVersion": "1",
+      "rulesFired": [
+        "rule.no_prerequisites",
+        "rule.blocked_by_unresolved_node"
+      ],
+      "sourceEdges": [
+        "edge:assumption-blocks-replay",
+        "edge:incident-contradicts-assumption"
+      ],
+      "sourceEvents": [
+        "event:clock-skew-observed",
+        "event:risk-assumed"
+      ],
+      "sourceNodes": [
+        "ev:clock-skew-incident",
+        "exp:replay-harness",
+        "risk:steady-clock"
+      ],
+      "subjectId": "exp:replay-harness",
+      "unsatisfiedPrerequisites": [
+        "blocked by risk:steady-clock"
+      ],
+      "value": "blocked"
+    },
+    {
+      "limitations": [],
+      "policy": "workgraph.policy.roadmap-derivation",
+      "policyVersion": "1",
+      "rulesFired": [
+        "rule.event_lifecycle"
+      ],
+      "sourceEdges": [],
+      "sourceEvents": [
+        "event:gate-achieved"
+      ],
+      "sourceNodes": [
+        "gate:0001-accept"
+      ],
+      "subjectId": "gate:0001-accept",
+      "unsatisfiedPrerequisites": [],
+      "value": "achieved"
+    },
+    {
+      "limitations": [
+        "Milestone acceptance is derived from its contained members' accepted events."
+      ],
+      "policy": "workgraph.policy.roadmap-derivation",
+      "policyVersion": "1",
+      "rulesFired": [
+        "rule.milestone_envelope_satisfied"
+      ],
+      "sourceEdges": [
+        "edge:ms-contains-design",
+        "edge:ms-contains-exp",
+        "edge:ms-contains-gate"
+      ],
+      "sourceEvents": [
+        "event:design-achieved",
+        "event:exp-achieved",
+        "event:gate-achieved"
+      ],
+      "sourceNodes": [
+        "design:lag-probe",
+        "exp:lag-probe",
+        "gate:0001-accept"
+      ],
+      "subjectId": "ms:0001",
+      "unsatisfiedPrerequisites": [],
+      "value": "achieved"
+    },
+    {
+      "limitations": [
+        "No transition history and no declared prerequisites."
+      ],
+      "policy": "workgraph.policy.roadmap-derivation",
+      "policyVersion": "1",
+      "rulesFired": [
+        "rule.no_prerequisites"
+      ],
+      "sourceEdges": [],
+      "sourceEvents": [],
+      "sourceNodes": [
+        "project:orchard"
+      ],
+      "subjectId": "project:orchard",
+      "unsatisfiedPrerequisites": [],
+      "value": "available"
+    },
+    {
+      "limitations": [
+        "Staleness marks a live contradiction; it does not erase the earlier accepted history."
+      ],
+      "policy": "workgraph.policy.roadmap-derivation",
+      "policyVersion": "1",
+      "rulesFired": [
+        "rule.event_lifecycle",
+        "rule.contradicted_by_observation"
+      ],
+      "sourceEdges": [
+        "edge:incident-contradicts-assumption"
+      ],
+      "sourceEvents": [
+        "event:clock-skew-observed",
+        "event:risk-assumed"
+      ],
+      "sourceNodes": [
+        "ev:clock-skew-incident",
+        "risk:steady-clock"
+      ],
+      "subjectId": "risk:steady-clock",
+      "unsatisfiedPrerequisites": [],
+      "value": "stale"
+    },
+    {
+      "limitations": [],
+      "policy": "workgraph.policy.roadmap-derivation",
+      "policyVersion": "1",
+      "rulesFired": [
+        "rule.event_lifecycle"
+      ],
+      "sourceEdges": [],
+      "sourceEvents": [
+        "event:rq-achieved"
+      ],
+      "sourceNodes": [
+        "rq:lag-attribution"
+      ],
+      "subjectId": "rq:lag-attribution",
+      "unsatisfiedPrerequisites": [],
+      "value": "achieved"
+    },
+    {
+      "limitations": [],
+      "policy": "workgraph.policy.roadmap-derivation",
+      "policyVersion": "1",
+      "rulesFired": [
+        "rule.event_lifecycle"
+      ],
+      "sourceEdges": [],
+      "sourceEvents": [
+        "event:session-active"
+      ],
+      "sourceNodes": [
+        "session:amber"
+      ],
+      "subjectId": "session:amber",
+      "unsatisfiedPrerequisites": [],
+      "value": "active"
+    }
+  ],
+  "effectiveEventIds": [
+    "event:rq-active",
+    "event:decision-adopted",
+    "event:risk-assumed",
+    "event:rq-achieved",
+    "event:session-active",
+    "event:exp-active",
+    "event:design-achieved",
+    "event:approval-recorded",
+    "event:exp-achieved",
+    "event:gate-achieved",
+    "event:report-registered",
+    "event:clock-skew-observed"
+  ],
+  "events": [
+    {
+      "actor": "operator:frost",
+      "authority": "administrative_assertion",
+      "basis": [
+        {
+          "algorithm": "sha256",
+          "digest": "2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+          "kind": "artifact",
+          "mediaType": "text/markdown"
+        }
+      ],
+      "declaredEvidenceCategory": "agent_assertion",
+      "evidenceCategory": "agent_assertion",
+      "humanApprovedAssertion": false,
+      "id": "event:rq-active",
+      "machineChecked": false,
+      "observedAt": "2026-07-28T09:00:00Z",
+      "policy": "workgraph.policy.administrative",
+      "policyRulesFired": [
+        "rule.transition-policy.workgraph.policy.administrative@1",
+        "rule.authority-evidence.administrative_assertion->agent_assertion"
+      ],
+      "policyVersion": "1",
+      "priorState": null,
+      "rationale": "Research opened; the note artifact records the framing.",
+      "requestedState": "active",
+      "subjectId": "rq:lag-attribution",
+      "transitionKind": "advance"
+    },
+    {
+      "actor": "operator:frost",
+      "authority": "administrative_assertion",
+      "basis": [
+        {
+          "algorithm": "sha256",
+          "digest": "4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d",
+          "kind": "artifact",
+          "mediaType": "text/markdown"
+        }
+      ],
+      "declaredEvidenceCategory": "agent_assertion",
+      "evidenceCategory": "agent_assertion",
+      "humanApprovedAssertion": false,
+      "id": "event:decision-adopted",
+      "machineChecked": false,
+      "observedAt": "2026-07-28T10:00:00Z",
+      "policy": "workgraph.policy.administrative",
+      "policyRulesFired": [
+        "rule.transition-policy.workgraph.policy.administrative@1",
+        "rule.authority-evidence.administrative_assertion->agent_assertion"
+      ],
+      "policyVersion": "1",
+      "priorState": null,
+      "rationale": "Decision recorded as an operator assertion, not a machine result.",
+      "requestedState": "achieved",
+      "subjectId": "decision:evidence-first",
+      "transitionKind": "advance"
+    },
+    {
+      "actor": "operator:frost",
+      "authority": "administrative_assertion",
+      "basis": [
+        {
+          "algorithm": "sha256",
+          "digest": "5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e",
+          "kind": "artifact",
+          "mediaType": "text/markdown"
+        }
+      ],
+      "declaredEvidenceCategory": "assumption",
+      "evidenceCategory": "assumption",
+      "humanApprovedAssertion": false,
+      "id": "event:risk-assumed",
+      "machineChecked": false,
+      "observedAt": "2026-07-28T11:00:00Z",
+      "policy": "workgraph.policy.administrative-assumption",
+      "policyRulesFired": [
+        "rule.transition-policy.workgraph.policy.administrative-assumption@1",
+        "rule.authority-evidence.administrative_assertion->assumption"
+      ],
+      "policyVersion": "1",
+      "priorState": null,
+      "rationale": "The steady-clock assumption is accepted as holding, explicitly as an assumption.",
+      "requestedState": "achieved",
+      "subjectId": "risk:steady-clock",
+      "transitionKind": "advance"
+    },
+    {
+      "actor": "operator:frost",
+      "authority": "administrative_assertion",
+      "basis": [
+        {
+          "algorithm": "sha256",
+          "digest": "3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c",
+          "kind": "artifact",
+          "mediaType": "text/markdown"
+        }
+      ],
+      "declaredEvidenceCategory": "agent_assertion",
+      "evidenceCategory": "agent_assertion",
+      "humanApprovedAssertion": false,
+      "id": "event:rq-achieved",
+      "machineChecked": false,
+      "observedAt": "2026-07-28T17:00:00Z",
+      "policy": "workgraph.policy.administrative",
+      "policyRulesFired": [
+        "rule.transition-policy.workgraph.policy.administrative@1",
+        "rule.authority-evidence.administrative_assertion->agent_assertion"
+      ],
+      "policyVersion": "1",
+      "priorState": "active",
+      "rationale": "Research concluded; the summary artifact is an assertion, not a machine check.",
+      "requestedState": "achieved",
+      "subjectId": "rq:lag-attribution",
+      "transitionKind": "advance"
+    },
+    {
+      "actor": "adapter:terminal-multiplexer",
+      "authority": "imported_observation",
+      "basis": [
+        {
+          "interpretation": "The provider reports a live session; this is an observation about the provider only.",
+          "kind": "external_record",
+          "observedAt": "2026-07-29T08:00:00Z",
+          "observedVersion": "42",
+          "project": "orchard",
+          "provider": "fictional-terminal-multiplexer",
+          "recordId": "session/amber-7"
+        }
+      ],
+      "declaredEvidenceCategory": "external_observation",
+      "evidenceCategory": "external_observation",
+      "humanApprovedAssertion": false,
+      "id": "event:session-active",
+      "machineChecked": false,
+      "observedAt": "2026-07-29T08:00:05Z",
+      "policy": "workgraph.policy.imported-observation",
+      "policyRulesFired": [
+        "rule.transition-policy.workgraph.policy.imported-observation@1",
+        "rule.authority-evidence.imported_observation->external_observation"
+      ],
+      "policyVersion": "1",
+      "priorState": null,
+      "rationale": "An external session record was observed; it asserts liveness, nothing more.",
+      "requestedState": "active",
+      "subjectId": "session:amber",
+      "transitionKind": "advance"
+    },
+    {
+      "actor": "adapter:terminal-multiplexer",
+      "authority": "imported_observation",
+      "basis": [
+        {
+          "kind": "git_commit",
+          "mutableContextOnly": "work/lag-probe-tracer",
+          "objectFormat": "sha1",
+          "objectId": "f00dfeedc0ffee5eedbeadfacade0fabb1e5c0de",
+          "repository": "https://example.invalid/fictional/orchard-telemetry"
+        },
+        {
+          "interpretation": "The session record names this experiment as its working subject.",
+          "kind": "external_record",
+          "observedAt": "2026-07-29T08:10:00Z",
+          "observedVersion": "43",
+          "project": "orchard",
+          "provider": "fictional-terminal-multiplexer",
+          "recordId": "session/amber-7"
+        }
+      ],
+      "declaredEvidenceCategory": "external_observation",
+      "evidenceCategory": "external_observation",
+      "humanApprovedAssertion": false,
+      "id": "event:exp-active",
+      "machineChecked": false,
+      "observedAt": "2026-07-29T08:10:05Z",
+      "policy": "workgraph.policy.imported-observation",
+      "policyRulesFired": [
+        "rule.transition-policy.workgraph.policy.imported-observation@1",
+        "rule.authority-evidence.imported_observation->external_observation"
+      ],
+      "policyVersion": "1",
+      "priorState": null,
+      "rationale": "The observed session started work on the experiment's exact commit.",
+      "requestedState": "active",
+      "subjectId": "exp:lag-probe",
+      "transitionKind": "advance"
+    },
+    {
+      "actor": "operator:frost",
+      "authority": "human_approval",
+      "basis": [
+        {
+          "actor": "operator:frost",
+          "approvedAt": "2026-07-29T10:00:00Z",
+          "approvedTransition": "achieved",
+          "authentication": "unverified",
+          "authorityScope": "project:orchard/design-freeze",
+          "evidenceCategory": "human_approved_assertion",
+          "kind": "human_approval",
+          "machineChecked": false,
+          "subjects": [
+            {
+              "algorithm": "sha256",
+              "digest": "1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a",
+              "kind": "artifact",
+              "mediaType": "text/markdown"
+            }
+          ]
+        }
+      ],
+      "declaredEvidenceCategory": "human_approved_assertion",
+      "evidenceCategory": "human_approved_assertion",
+      "humanApprovedAssertion": true,
+      "id": "event:design-achieved",
+      "machineChecked": false,
+      "observedAt": "2026-07-29T10:00:05Z",
+      "policy": "workgraph.policy.human-approval",
+      "policyRulesFired": [
+        "rule.transition-policy.workgraph.policy.human-approval@1",
+        "rule.authority-evidence.human_approval->human_approved_assertion"
+      ],
+      "policyVersion": "1",
+      "priorState": null,
+      "rationale": "The operator approved the design freeze. This is a human-approved assertion and is not machine checked.",
+      "requestedState": "achieved",
+      "subjectId": "design:lag-probe",
+      "transitionKind": "advance"
+    },
+    {
+      "actor": "operator:frost",
+      "authority": "human_approval",
+      "basis": [
+        {
+          "actor": "operator:frost",
+          "approvedAt": "2026-07-29T10:00:00Z",
+          "approvedTransition": "achieved",
+          "authentication": "unverified",
+          "authorityScope": "project:orchard/design-freeze",
+          "evidenceCategory": "human_approved_assertion",
+          "kind": "human_approval",
+          "machineChecked": false,
+          "subjects": [
+            {
+              "algorithm": "sha256",
+              "digest": "1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a",
+              "kind": "artifact",
+              "mediaType": "text/markdown"
+            }
+          ]
+        }
+      ],
+      "declaredEvidenceCategory": "human_approved_assertion",
+      "evidenceCategory": "human_approved_assertion",
+      "humanApprovedAssertion": true,
+      "id": "event:approval-recorded",
+      "machineChecked": false,
+      "observedAt": "2026-07-29T10:00:06Z",
+      "policy": "workgraph.policy.human-approval",
+      "policyRulesFired": [
+        "rule.transition-policy.workgraph.policy.human-approval@1",
+        "rule.authority-evidence.human_approval->human_approved_assertion"
+      ],
+      "policyVersion": "1",
+      "priorState": null,
+      "rationale": "The approval record itself is recorded as a human-approved assertion.",
+      "requestedState": "achieved",
+      "subjectId": "approval:design-freeze",
+      "transitionKind": "advance"
+    },
+    {
+      "actor": "workgraph.policy.machine-check/v1",
+      "authority": "machine_policy",
+      "basis": [
+        {
+          "checker": "lag-probe-check",
+          "checkerVersion": "3.1.4",
+          "exitCode": 0,
+          "kind": "machine_check",
+          "observedAt": "2026-07-29T15:20:00Z",
+          "operation": "probe --replay window=24h",
+          "outputDigest": "7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a",
+          "policy": "orchard.policy.probe-acceptance/v1",
+          "result": "passed",
+          "subjects": [
+            {
+              "kind": "git_commit",
+              "mutableContextOnly": "work/lag-probe-tracer",
+              "objectFormat": "sha1",
+              "objectId": "f00dfeedc0ffee5eedbeadfacade0fabb1e5c0de",
+              "repository": "https://example.invalid/fictional/orchard-telemetry"
+            }
+          ]
+        }
+      ],
+      "declaredEvidenceCategory": "machine_check",
+      "evidenceCategory": "machine_check",
+      "humanApprovedAssertion": false,
+      "id": "event:exp-achieved",
+      "machineChecked": true,
+      "observedAt": "2026-07-29T15:20:05Z",
+      "policy": "orchard.policy.probe-acceptance",
+      "policyRulesFired": [
+        "rule.transition-policy.orchard.policy.probe-acceptance@1",
+        "rule.authority-evidence.machine_policy->machine_check",
+        "rule.acceptance-contract.orchard.policy.probe-acceptance/v1"
+      ],
+      "policyVersion": "1",
+      "priorState": "active",
+      "rationale": "The bound probe check passed against the exact tracer commit.",
+      "requestedState": "achieved",
+      "subjectId": "exp:lag-probe",
+      "transitionKind": "advance"
+    },
+    {
+      "actor": "workgraph.policy.machine-check/v1",
+      "authority": "machine_policy",
+      "basis": [
+        {
+          "checker": "acceptance-runner",
+          "checkerVersion": "2.0.0",
+          "exitCode": 0,
+          "kind": "machine_check",
+          "observedAt": "2026-07-29T16:05:00Z",
+          "operation": "accept --gate 0001",
+          "outputDigest": "8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b",
+          "policy": "orchard.policy.gate-0001/v1",
+          "result": "passed",
+          "subjects": [
+            {
+              "kind": "git_commit",
+              "mutableContextOnly": "work/lag-probe-tracer",
+              "objectFormat": "sha1",
+              "objectId": "f00dfeedc0ffee5eedbeadfacade0fabb1e5c0de",
+              "repository": "https://example.invalid/fictional/orchard-telemetry"
+            }
+          ]
+        }
+      ],
+      "declaredEvidenceCategory": "machine_check",
+      "evidenceCategory": "machine_check",
+      "humanApprovedAssertion": false,
+      "id": "event:gate-achieved",
+      "machineChecked": true,
+      "observedAt": "2026-07-29T16:05:05Z",
+      "policy": "orchard.policy.gate-0001",
+      "policyRulesFired": [
+        "rule.transition-policy.orchard.policy.gate-0001@1",
+        "rule.authority-evidence.machine_policy->machine_check",
+        "rule.acceptance-contract.orchard.policy.gate-0001/v1"
+      ],
+      "policyVersion": "1",
+      "priorState": null,
+      "rationale": "The acceptance gate's bound runner passed against the exact tracer commit.",
+      "requestedState": "achieved",
+      "subjectId": "gate:0001-accept",
+      "transitionKind": "advance"
+    },
+    {
+      "actor": "operator:frost",
+      "authority": "administrative_assertion",
+      "basis": [
+        {
+          "algorithm": "sha256",
+          "digest": "6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f",
+          "kind": "artifact",
+          "mediaType": "application/json"
+        }
+      ],
+      "declaredEvidenceCategory": "agent_assertion",
+      "evidenceCategory": "agent_assertion",
+      "humanApprovedAssertion": false,
+      "id": "event:report-registered",
+      "machineChecked": false,
+      "observedAt": "2026-07-29T16:10:00Z",
+      "policy": "workgraph.policy.administrative",
+      "policyRulesFired": [
+        "rule.transition-policy.workgraph.policy.administrative@1",
+        "rule.authority-evidence.administrative_assertion->agent_assertion"
+      ],
+      "policyVersion": "1",
+      "priorState": null,
+      "rationale": "The report artifact is registered by digest; the digest is its identity.",
+      "requestedState": "achieved",
+      "subjectId": "artifact:probe-report",
+      "transitionKind": "advance"
+    },
+    {
+      "actor": "adapter:ops-import",
+      "authority": "imported_observation",
+      "basis": [
+        {
+          "interpretation": "The monitor reports 40ms clock skew across hosts, contradicting the steady-clock assumption.",
+          "kind": "external_record",
+          "observedAt": "2026-07-30T02:00:00Z",
+          "observedVersion": "incident-revision-0001",
+          "project": "orchard",
+          "provider": "fictional-ops-monitor",
+          "recordId": "incident/2026-07-30-clock-skew"
+        }
+      ],
+      "declaredEvidenceCategory": "external_observation",
+      "evidenceCategory": "external_observation",
+      "humanApprovedAssertion": false,
+      "id": "event:clock-skew-observed",
+      "machineChecked": false,
+      "observedAt": "2026-07-30T02:00:05Z",
+      "policy": "workgraph.policy.imported-observation",
+      "policyRulesFired": [
+        "rule.transition-policy.workgraph.policy.imported-observation@1",
+        "rule.authority-evidence.imported_observation->external_observation"
+      ],
+      "policyVersion": "1",
+      "priorState": null,
+      "rationale": "A failing operational observation was imported. Earlier accepted history is preserved; a revision frontier is derived instead.",
+      "requestedState": "achieved",
+      "subjectId": "ev:clock-skew-incident",
+      "transitionKind": "advance"
+    }
+  ],
+  "generator": "workgraph-tracer-0001-projector/1",
+  "pendingRequests": [
+    {
+      "canonicalEffect": "none: a commit-declared request changes no state until an observer event references the immutable resulting commit",
+      "declaredBy": "agent:amber",
+      "declaredInRepository": "https://example.invalid/fictional/orchard-telemetry",
+      "id": "request:activate-replay",
+      "rationale": "A commit declares intent to start the replay harness. No observer event references a resulting immutable commit yet, so no state change occurs.",
+      "requestedState": "active",
+      "subjectId": "exp:replay-harness"
+    }
+  ]
+}

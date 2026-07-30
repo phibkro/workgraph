@@ -1,0 +1,70 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error",
+    "perf": "error"
+  },
+  "plugins": ["typescript", "unicorn", "oxc", "import", "promise"],
+  "rules": {
+    "eqeqeq": "error",
+    "no-console": "error",
+    "no-throw-literal": "error",
+    "promise/no-multiple-resolved": "error",
+    "typescript/consistent-type-imports": "error",
+    "typescript/no-explicit-any": "error",
+    "unicorn/prefer-node-protocol": "error"
+  },
+  "overrides": [
+    {
+      "files": ["tests/**/*.ts"],
+      "rules": {
+        "typescript/no-explicit-any": "off",
+        "unicorn/consistent-function-scoping": "off"
+      }
+    },
+    {
+      "files": ["src/core/**/*.ts"],
+      "rules": {
+        "no-restricted-globals": [
+          "error",
+          {
+            "checkGlobalObject": true,
+            "globals": [
+              "Bun",
+              "Buffer",
+              "Date",
+              "Deno",
+              "EventSource",
+              "WebSocket",
+              "XMLHttpRequest",
+              "crypto",
+              "document",
+              "fetch",
+              "globalThis",
+              "localStorage",
+              "navigator",
+              "performance",
+              "process",
+              "queueMicrotask",
+              "self",
+              "sessionStorage",
+              "setImmediate",
+              "setInterval",
+              "setTimeout",
+              "window"
+            ]
+          }
+        ],
+        "no-restricted-properties": [
+          "error",
+          {
+            "object": "Math",
+            "property": "random",
+            "message": "Portable core receives nondeterminism through an injected boundary."
+          }
+        ]
+      }
+    }
+  ]
+}

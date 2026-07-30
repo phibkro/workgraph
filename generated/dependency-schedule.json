@@ -1,0 +1,132 @@
+{
+  "canonicalDigest": "sha256:6b5e49508246f9f1d1ef8f827c1ca2587072fd633c5ea6f8aa27c896c9475fbe",
+  "edgeKinds": [
+    "requires"
+  ],
+  "entries": [
+    {
+      "dependsOn": [
+        {
+          "targetId": "design:lag-probe",
+          "transitionEvidence": {
+            "authority": "human_approval",
+            "eventId": "event:design-achieved",
+            "evidenceCategory": "human_approved_assertion",
+            "humanApprovedAssertion": true,
+            "machineChecked": false
+          }
+        },
+        {
+          "optional": true,
+          "targetId": "exp:replay-harness"
+        },
+        {
+          "targetId": "gate:0001-accept",
+          "transitionEvidence": {
+            "authority": "machine_policy",
+            "eventId": "event:gate-achieved",
+            "evidenceCategory": "machine_check",
+            "humanApprovedAssertion": false,
+            "machineChecked": true
+          }
+        }
+      ],
+      "derivedValue": "available",
+      "kind": "capability",
+      "layer": 1,
+      "subjectId": "cap:lag-attribution",
+      "title": "Per-stage lag attribution"
+    },
+    {
+      "dependsOn": [
+        {
+          "targetId": "cap:lag-attribution"
+        }
+      ],
+      "derivedValue": "locked",
+      "kind": "capability",
+      "layer": 2,
+      "subjectId": "cap:multi-region",
+      "title": "Multi-region ingest attribution"
+    },
+    {
+      "dependsOn": [
+        {
+          "orGroup": "realization",
+          "targetId": "exp:lag-probe",
+          "transitionEvidence": {
+            "authority": "machine_policy",
+            "eventId": "event:exp-achieved",
+            "evidenceCategory": "machine_check",
+            "humanApprovedAssertion": false,
+            "machineChecked": true
+          }
+        },
+        {
+          "orGroup": "realization",
+          "targetId": "exp:replay-harness"
+        }
+      ],
+      "derivedValue": "available",
+      "kind": "capability",
+      "layer": 1,
+      "subjectId": "cap:replay-validation",
+      "title": "Replay-based validation"
+    },
+    {
+      "dependsOn": [],
+      "derivedValue": "achieved",
+      "kind": "design_contract",
+      "layer": 0,
+      "subjectId": "design:lag-probe",
+      "title": "Frozen lag-probe design",
+      "transitionEvidence": {
+        "authority": "human_approval",
+        "eventId": "event:design-achieved",
+        "evidenceCategory": "human_approved_assertion",
+        "humanApprovedAssertion": true,
+        "machineChecked": false
+      }
+    },
+    {
+      "dependsOn": [],
+      "derivedValue": "achieved",
+      "kind": "work_item",
+      "layer": 0,
+      "subjectId": "exp:lag-probe",
+      "title": "Lag-probe tracer experiment",
+      "transitionEvidence": {
+        "authority": "machine_policy",
+        "eventId": "event:exp-achieved",
+        "evidenceCategory": "machine_check",
+        "humanApprovedAssertion": false,
+        "machineChecked": true
+      }
+    },
+    {
+      "dependsOn": [],
+      "derivedValue": "blocked",
+      "kind": "work_item",
+      "layer": 0,
+      "subjectId": "exp:replay-harness",
+      "title": "Alternative replay harness experiment"
+    },
+    {
+      "dependsOn": [],
+      "derivedValue": "achieved",
+      "kind": "acceptance_gate",
+      "layer": 0,
+      "subjectId": "gate:0001-accept",
+      "title": "Tracer acceptance gate 0001",
+      "transitionEvidence": {
+        "authority": "machine_policy",
+        "eventId": "event:gate-achieved",
+        "evidenceCategory": "machine_check",
+        "humanApprovedAssertion": false,
+        "machineChecked": true
+      }
+    }
+  ],
+  "generator": "workgraph-tracer-0001-projector/1",
+  "note": "This schedule is a derived acyclic projection, not the canonical graph."
+}

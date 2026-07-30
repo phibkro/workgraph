@@ -1,0 +1,35 @@
+{
+  "canonicalDigest": "sha256:6b5e49508246f9f1d1ef8f827c1ca2587072fd633c5ea6f8aa27c896c9475fbe",
+  "files": [
+    {
+      "path": "normalized-graph.json",
+      "sha256": "c8240e2a0d02a55a9060d6d156bb8ae86596f0339b40648d7d7b1f281dec8d65"
+    },
+    {
+      "path": "capability-roadmap.json",
+      "sha256": "4dfd243ad5dc262aa23a13451de8aa7380483a481e08173a265f79a4ed4b7fda"
+    },
+    {
+      "path": "capability-roadmap.mmd",
+      "sha256": "8b630c43293a4060a3a8ad2c1df78e123966e1e2f9cdcbc04865fa9163cd8204"
+    },
+    {
+      "path": "dependency-schedule.json",
+      "sha256": "3db5e174697b507a71e7992ff0b6d3ec16cd580b26cb0f50fd0c461756d1025c"
+    },
+    {
+      "path": "milestone-status.md",
+      "sha256": "9a01a43f5962051f26cec929c4f04be4fafe6e98f3450f76de262316bca6f077"
+    },
+    {
+      "path": "transition-explanations.json",
+      "sha256": "c250645bf4f2eb58cebfd8ad67234631953122f5997d19426fed57b0f3c60fc9"
+    },
+    {
+      "path": "acceptance-contract-coverage.json",
+      "sha256": "8590a971ccf0c9b4e1359f52cd3deef886074b3ee58d2f4e0c6885a5eec19f32"
+    }
+  ],
+  "generator": "workgraph-tracer-0001-projector/1",
+  "note": "Derived views bound to the canonical digest. Regenerate and compare; never edit by hand."
+}

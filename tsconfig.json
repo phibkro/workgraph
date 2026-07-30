@@ -1,0 +1,47 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "moduleDetection": "force",
+    "allowImportingTsExtensions": true,
+    "lib": ["ES2023"],
+    "types": ["bun"],
+    "strict": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noUnusedLocals": true,
+    "noEmit": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "plugins": [
+      {
+        "name": "@effect/language-service",
+        "diagnostics": true,
+        "ignoreEffectWarningsInTscExitCode": false,
+        "ignoreEffectErrorsInTscExitCode": false,
+        "options": {
+          "diagnosticSeverity": {
+            "anyUnknownInErrorContext": "error",
+            "cryptoRandomUUIDInEffect": "error",
+            "floatingEffect": "error",
+            "globalConsoleInEffect": "error",
+            "globalDateInEffect": "error",
+            "globalFetchInEffect": "error",
+            "globalRandomInEffect": "error",
+            "globalTimersInEffect": "error",
+            "leakingRequirements": "error",
+            "nodeBuiltinImport": "error",
+            "outdatedApi": "error",
+            "processEnvInEffect": "error",
+            "strictEffectProvide": "error",
+            "unsafeEffectTypeAssertion": "error"
+          }
+        }
+      }
+    ]
+  },
+  "include": ["src/**/*.ts", "tests/**/*.ts", "scripts/**/*.ts"]
+}

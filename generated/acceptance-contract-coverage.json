@@ -1,0 +1,134 @@
+{
+  "artifactKind": "acceptance_contract_coverage",
+  "canonicalDigest": "sha256:6b5e49508246f9f1d1ef8f827c1ca2587072fd633c5ea6f8aa27c896c9475fbe",
+  "generator": "workgraph-tracer-0001-acceptance-contract/1",
+  "items": [
+    {
+      "exercisedBy": [
+        "bun test tests/acceptance-0001.test.ts :: item 1"
+      ],
+      "item": 1,
+      "requirement": "The fixture validates and every canonical transition has at least one typed exact basis reference."
+    },
+    {
+      "exercisedBy": [
+        "bun test tests/acceptance-0001.test.ts :: item 2"
+      ],
+      "item": 2,
+      "requirement": "Removing or weakening a commit object ID makes the dependent transition invalid."
+    },
+    {
+      "exercisedBy": [
+        "bun test tests/acceptance-0001.test.ts :: item 3"
+      ],
+      "item": 3,
+      "requirement": "A branch name alone cannot satisfy an exact-subject requirement."
+    },
+    {
+      "exercisedBy": [
+        "bun test tests/acceptance-0001.test.ts :: item 4"
+      ],
+      "item": 4,
+      "requirement": "A machine check bound to commit A cannot unlock the artifact from commit B."
+    },
+    {
+      "exercisedBy": [
+        "bun test tests/acceptance-0001.test.ts :: item 5",
+        "bun scripts/accept-0001.ts :: claims-scan"
+      ],
+      "item": 5,
+      "requirement": "A human-approved transition is accepted when policy permits it, and every generated view labels it as a human-approved assertion with machine_checked: false."
+    },
+    {
+      "exercisedBy": [
+        "bun test tests/acceptance-0001.test.ts :: item 6"
+      ],
+      "item": 6,
+      "requirement": "An agent's untyped done assertion cannot satisfy a machine-check gate."
+    },
+    {
+      "exercisedBy": [
+        "bun test tests/acceptance-0001.test.ts :: item 7"
+      ],
+      "item": 7,
+      "requirement": "A commit-declared transition request produces no state change until a separate observer event references the immutable resulting commit."
+    },
+    {
+      "exercisedBy": [
+        "bun test tests/acceptance-0001.test.ts :: item 8"
+      ],
+      "item": 8,
+      "requirement": "Correcting a transition creates a superseding event and preserves the prior event."
+    },
+    {
+      "exercisedBy": [
+        "bun test tests/acceptance-0001.test.ts :: item 9"
+      ],
+      "item": 9,
+      "requirement": "The canonical graph accepts the fixture's legal feedback cycle."
+    },
+    {
+      "exercisedBy": [
+        "bun test tests/acceptance-0001.test.ts :: item 10"
+      ],
+      "item": 10,
+      "requirement": "A requires or contains cycle fails the applicable projection."
+    },
+    {
+      "exercisedBy": [
+        "bun test tests/acceptance-0001.test.ts :: item 11"
+      ],
+      "item": 11,
+      "requirement": "The roadmap derives locked, available, active, achieved, stale, and blocked nodes with source-level explanations."
+    },
+    {
+      "exercisedBy": [
+        "bun test tests/acceptance-0001.test.ts :: item 12"
+      ],
+      "item": 12,
+      "requirement": "AND, OR, and optional prerequisites have distinct, explained unlock semantics."
+    },
+    {
+      "exercisedBy": [
+        "bun test tests/acceptance-0001.test.ts :: item 13",
+        "bun scripts/accept-0001.ts :: digest-binding"
+      ],
+      "item": 13,
+      "requirement": "Every projection carries the same canonical revision or digest."
+    },
+    {
+      "exercisedBy": [
+        "bun test tests/acceptance-0001.test.ts :: item 14",
+        "bun scripts/accept-0001.ts :: drift-check"
+      ],
+      "item": 14,
+      "requirement": "Editing a generated projection makes the drift check fail."
+    },
+    {
+      "exercisedBy": [
+        "bun scripts/accept-0001.ts :: bun-node-parity"
+      ],
+      "item": 15,
+      "requirement": "Bun and Node produce byte-equivalent normalized and derived bounded observations."
+    },
+    {
+      "exercisedBy": [
+        "bun scripts/check-portable-imports.ts"
+      ],
+      "item": 16,
+      "requirement": "The portable core transitive import closure reaches no forbidden capability."
+    },
+    {
+      "exercisedBy": [
+        "bun scripts/accept-0001.ts :: claims-scan"
+      ],
+      "item": 17,
+      "requirement": "No projection claims more than its evidence category supports under the bounded claim vocabulary."
+    }
+  ],
+  "limitations": [
+    "This generated artifact maps requirements to commands; it records no command execution or result.",
+    "Actual result binding belongs to a separate external commit or CI observation with exact source identity, environment, disposition, output digest, and observation time."
+  ],
+  "spec": "design-specs/0001-truth-bound-capability-roadmap.md"
+}
