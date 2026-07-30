@@ -49,6 +49,8 @@ The first tracer implementation is present:
   producing byte-equivalent generated views;
 - deterministic generated projections (`generated/`), each bound to the
   canonical graph digest and guarded by a drift check; and
+- a closed, versioned transition-policy table binding authority, evidence
+  category, lifecycle edges, and machine acceptance-contract identity; and
 - the executable gates established by the spec:
 
 ```bash
@@ -57,8 +59,11 @@ bun run check
 bun run accept:0001   # requires a genuine Node.js on PATH, not Bun's node shim
 ```
 
-These gates are machine checks bound to the run that executes them. They do
-not establish independent review, operational suitability, or human approval.
+The committed `acceptance-contract-coverage.json` view maps requirements to
+commands but records no execution result. An external caller or CI observation
+must bind an actual run to its exact source, environment, disposition, output
+digest, and observation time. A run does not establish independent review,
+operational suitability, or human approval.
 
 ### Local store status
 
@@ -66,12 +71,17 @@ For this tracer, the committed fixture module
 [`src/fixture/tracer-0001.ts`](src/fixture/tracer-0001.ts) is the canonical
 local store: a typed, Git-versioned document holding the graph, its
 append-only event history, and its pending requests.
-`generated/normalized-graph.json` is its deterministic serialization, bound
-by the canonical digest. This satisfies "one local store suitable for the
-tracer" in its narrowest honest reading — read-only, single-document,
-versioned by Git. A general read/write store API (append events, load and
-persist arbitrary graphs) is deliberately deferred to a later tracer and is
-not claimed here.
+`generated/normalized-graph.json` is a deterministic projection wrapper that
+carries the digest of its nested canonical graph. The digest deliberately does
+not hash the wrapper containing itself. This satisfies "one local store
+suitable for the tracer" in its narrowest honest reading — read-only,
+single-document, versioned by Git. A general read/write store API (append
+events, load and persist arbitrary graphs) is deliberately deferred to a later
+tracer and is not claimed here.
+
+The implementation provenance, evaluated prior art, license boundaries, and
+claim limits are recorded in
+[`docs/provenance-and-evidence-limits.md`](docs/provenance-and-evidence-limits.md).
 
 ## Independence
 
