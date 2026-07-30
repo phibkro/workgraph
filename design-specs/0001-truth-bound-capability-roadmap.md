@@ -452,6 +452,24 @@ of the following:
 17. No unsupported proof, authentication, execution, or operational-suitability
     claim appears in any projection.
 
+### Executable acceptance commands
+
+The completion head must pass these exact commands from a clean checkout:
+
+```bash
+bun install --frozen-lockfile --ignore-scripts
+bun run check
+bun run accept:0001
+git diff --check
+git status --short
+```
+
+`bun run check` owns formatting, lint, type checking, portable-core import
+closure, and the complete bounded test suite. `bun run accept:0001` owns the
+observable Bun/Node tracer journey, byte-equivalence comparison, generated-view
+drift check, and acceptance-item evidence manifest. A missing runtime or tool is
+a failure, never a warning.
+
 ## Falsifiers
 
 The design is rejected or explicitly revised if:
