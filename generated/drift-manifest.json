@@ -1,33 +1,33 @@
 {
-  "canonicalDigest": "sha256:d99c656a14d79629d081f1cfbd15934aea408de808a3f889fe935215b95cdaef",
+  "canonicalDigest": "sha256:ba512b66a9c5fc85f2f64e3245b6d2427c8c58f19aa9d984886d23503b719228",
   "files": [
     {
       "path": "normalized-graph.json",
-      "sha256": "d99c656a14d79629d081f1cfbd15934aea408de808a3f889fe935215b95cdaef"
+      "sha256": "ba512b66a9c5fc85f2f64e3245b6d2427c8c58f19aa9d984886d23503b719228"
     },
     {
       "path": "capability-roadmap.json",
-      "sha256": "55874932e19eb0a43940b0fbf2ccab8657948963625c7a5e9c5d9c61f3432883"
+      "sha256": "16e1f643ef770fbb584f9cc510173de43c6394eaf914a8b2bca56c64eb84ec81"
     },
     {
       "path": "capability-roadmap.mmd",
-      "sha256": "a4e9b16cae68eeb6c3175c4bbab58be277f7f0aad7e7e98c1b3095628ef42802"
+      "sha256": "7e1613f77d006cb457677ccd13bd786e82ab9b3550432b8d2721813fde3803f9"
     },
     {
       "path": "dependency-schedule.json",
-      "sha256": "02132616dca68c777bafd3e86dbf853cc42919b893b8d53022ddd466a0ba739c"
+      "sha256": "6d5bec9b72cedfed82d66b260ed4c5a03479223ceb2ff736beb4fb8258df875e"
     },
     {
       "path": "milestone-status.md",
-      "sha256": "9b87d921588b5a779285958ac5dd2fee4b95ee31f1dd0c49fda73e7b3e55f02f"
+      "sha256": "6fcf55782bec3df7c747527176ad2ca4615d504d30376503f767e8ac81d86743"
     },
     {
       "path": "transition-explanations.json",
-      "sha256": "8d2bd5bf386d6f1a4723e9e31956ff21c4fe7f2493214a62b5a1863aba85b4c1"
+      "sha256": "1932c6e0b4462b91b0e3981b08952600523f2d8e0fc4d2ce32582a487b5920cc"
     },
     {
       "path": "acceptance-evidence.json",
-      "sha256": "a4bd9fb9c2baa492ee0f5bb6711c36e9fd59d04358bf58b5d2791007657b9b21"
+      "sha256": "2f9ad545f959e9388de423c306a95de256b9873f9a83b57dc1b819a68a1d62bd"
     }
   ],
   "generator": "workgraph-tracer-0001-projector/1",

@@ -6,7 +6,7 @@ import type {
   WorkGraph,
   WorkNode,
 } from "./model.ts";
-import { validateGraph } from "./graph.ts";
+import { effectiveEvents, validateGraph } from "./graph.ts";
 
 export const DERIVATION_POLICY = "workgraph.policy.roadmap-derivation";
 export const DERIVATION_POLICY_VERSION = "1";
@@ -107,7 +107,7 @@ const byCodeUnit = (left: string, right: string): number =>
 
 const latestLifecycle = (graph: WorkGraph): ReadonlyMap<string, LifecycleFact> => {
   const facts = new Map<string, LifecycleFact>();
-  for (const event of graph.events) {
+  for (const event of effectiveEvents(graph)) {
     facts.set(event.subjectId, { state: event.requestedState, event });
   }
   return facts;
@@ -117,8 +117,6 @@ const orGroupOf = (edge: WorkEdge): string | undefined => {
   const value = edge.attributes?.["orGroup"];
   return typeof value === "string" ? value : undefined;
 };
-
-const RESOLVED_BLOCKER_STATES: ReadonlySet<string> = new Set(["achieved", "abandoned"]);
 
 export const deriveRoadmap = (graph: WorkGraph): Derivation => {
   const validation = validateGraph(graph);
@@ -164,6 +162,19 @@ export const deriveRoadmap = (graph: WorkGraph): Derivation => {
       const sourceState = lifecycle.get(edge.from)?.state;
       return sourceState === "achieved" || sourceState === "active";
     });
+
+  /**
+   * Blocker resolution reads the blocker's canonical lifecycle, not its
+   * derived display value (which never shows "abandoned"). An abandoned
+   * blocker stops blocking; an achieved blocker resolves only while no live
+   * observation contradicts it.
+   */
+  const blockerResolved = (blockerId: string): boolean => {
+    const state = lifecycle.get(blockerId)?.state;
+    if (state === "abandoned") return true;
+    if (state === "achieved") return activeContradictions(blockerId).length === 0;
+    return false;
+  };
 
   const prerequisiteReport = (subjectId: string): PrerequisiteReport => {
     const edges = requiresBySource.get(subjectId) ?? [];
@@ -338,10 +349,9 @@ export const deriveRoadmap = (graph: WorkGraph): Derivation => {
   const statuses = graph.nodes
     .map((node): DerivedStatus => {
       const base = bases.get(node.id)!;
-      const blockers = (blocksByTarget.get(node.id) ?? []).filter((edge) => {
-        const blockerBase = bases.get(edge.from);
-        return blockerBase !== undefined && !RESOLVED_BLOCKER_STATES.has(blockerBase.value);
-      });
+      const blockers = (blocksByTarget.get(node.id) ?? []).filter(
+        (edge) => !blockerResolved(edge.from),
+      );
       if (blockers.length > 0 && base.value !== "achieved" && base.value !== "invalid") {
         return {
           subjectId: node.id,

@@ -1,5 +1,5 @@
 {
-  "canonicalDigest": "sha256:d99c656a14d79629d081f1cfbd15934aea408de808a3f889fe935215b95cdaef",
+  "canonicalDigest": "sha256:ba512b66a9c5fc85f2f64e3245b6d2427c8c58f19aa9d984886d23503b719228",
   "derivationPolicy": {
     "policy": "workgraph.policy.roadmap-derivation",
     "policyVersion": "1"

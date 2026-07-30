@@ -1,5 +1,5 @@
 {
-  "canonicalDigest": "sha256:d99c656a14d79629d081f1cfbd15934aea408de808a3f889fe935215b95cdaef",
+  "canonicalDigest": "sha256:ba512b66a9c5fc85f2f64e3245b6d2427c8c58f19aa9d984886d23503b719228",
   "generator": "workgraph-tracer-0001-acceptance/1",
   "items": [
     {
@@ -139,12 +139,12 @@
       ],
       "evidenceCategory": "machine_check",
       "item": 17,
-      "requirement": "No unsupported proof, authentication, execution, or operational-suitability claim appears in any projection."
+      "requirement": "No projection claims more than its evidence category supports; the shared forbidden-claim vocabulary matches nothing in any generated view."
     }
   ],
   "limitations": [
-    "Each item is established per run by the named executable checks; this manifest records the binding for the stated canonical digest, not a standing guarantee.",
-    "Machine checks establish that the named checks passed; they do not establish operational suitability, formal proof, or human intent."
+    "Each item is established per run by the named executable checks; the binding holds for the stated canonical digest and that run only.",
+    "The named checks passing is the entire claim; no stronger evidence category is implied, and human intent is never machine-established."
   ],
   "spec": "design-specs/0001-truth-bound-capability-roadmap.md"
 }

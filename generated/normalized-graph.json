@@ -557,6 +557,14 @@
   ],
   "nodes": [
     {
+      "exactSubject": {
+        "algorithm": "sha256",
+        "digest": "1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a",
+        "kind": "artifact",
+        "locator": "design-specs/lag-probe.md",
+        "mediaType": "text/markdown",
+        "producedBy": "design-freeze-editor/v1"
+      },
       "id": "approval:design-freeze",
       "kind": "human_approval",
       "title": "Operator approval of the design freeze"

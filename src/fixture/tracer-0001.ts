@@ -195,6 +195,7 @@ export const tracerFixture: WorkGraph = {
       id: "approval:design-freeze",
       kind: "human_approval",
       title: "Operator approval of the design freeze",
+      exactSubject: designSpecArtifact,
     },
     {
       id: "decision:evidence-first",

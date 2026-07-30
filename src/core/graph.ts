@@ -104,34 +104,73 @@ const validateTransitionPolicy = (
 
   if (event.authority === "machine_policy") {
     const checks = event.basis.filter((reference) => reference.kind === "machine_check");
+    const passing = checks.filter((check) => check.result === "passed" && check.exitCode === 0);
     if (event.evidenceCategory !== "machine_check" || checks.length === 0) {
       issues.push({
         code: "machine_policy_without_check",
         subject: event.id,
         detail: "Machine-policy transitions require machine-check evidence.",
       });
-    } else if (!checks.some((check) => check.result === "passed" && check.exitCode === 0)) {
+    } else if (passing.length === 0) {
       issues.push({
         code: "machine_check_not_passing",
         subject: event.id,
         detail: "At least one bound machine check must pass.",
+      });
+    } else if (node.exactSubject === undefined) {
+      issues.push({
+        code: "machine_policy_unbound_subject",
+        subject: event.id,
+        detail:
+          "A machine-policy transition requires the subject node to declare an exact subject identity for the check to bind to.",
+      });
+    } else if (
+      !passing.some((check) =>
+        check.subjects.some((subject) => sameExactReference(subject, node.exactSubject!)),
+      )
+    ) {
+      // Conjoint binding: a passing check and a matching exact reference in
+      // the basis are not enough independently. The passing check itself must
+      // name the subject's exact reference, or a check for commit A padded
+      // with a bare reference to commit B could unlock B.
+      issues.push({
+        code: "machine_check_not_bound_to_subject",
+        subject: event.id,
+        detail:
+          "No passing machine check names the subject's exact reference; a check for a different subject cannot unlock this node.",
       });
     }
   }
 
   if (event.authority === "human_approval") {
     const approvals = event.basis.filter((reference) => reference.kind === "human_approval");
-    if (
-      event.evidenceCategory !== "human_approved_assertion" ||
-      !approvals.some(
-        (approval) =>
-          approval.approvedTransition === event.requestedState && approval.machineChecked === false,
-      )
-    ) {
+    const wellFormed = approvals.filter(
+      (approval) =>
+        approval.approvedTransition === event.requestedState && approval.machineChecked === false,
+    );
+    if (event.evidenceCategory !== "human_approved_assertion" || wellFormed.length === 0) {
       issues.push({
         code: "human_approval_mislabeled",
         subject: event.id,
         detail: "Human authority requires an explicitly non-machine-checked approval.",
+      });
+    } else if (node.exactSubject === undefined) {
+      issues.push({
+        code: "human_approval_unbound_subject",
+        subject: event.id,
+        detail:
+          "A human-approval transition requires the subject node to declare an exact subject identity for the approval to bind to.",
+      });
+    } else if (
+      !wellFormed.some((approval) =>
+        approval.subjects.some((subject) => sameExactReference(subject, node.exactSubject!)),
+      )
+    ) {
+      issues.push({
+        code: "human_approval_not_bound_to_subject",
+        subject: event.id,
+        detail:
+          "No qualifying approval names the subject's exact reference; an approval about a different artifact cannot advance this node.",
       });
     }
   }
@@ -284,12 +323,35 @@ export const validateGraph = (graph: WorkGraph): ValidationResult => {
   return { accepted: issues.length === 0, issues };
 };
 
+/**
+ * Replays the event history with corrections applied at the position of the
+ * event they supersede. A correction replaces the corrected event where it
+ * happened; it does not append a new "latest" fact. Otherwise correcting a
+ * non-latest event would overwrite later, uncorrected state.
+ */
+export const effectiveEvents = (graph: WorkGraph): ReadonlyArray<TransitionEvent> => {
+  const replacedBy = new Map<string, TransitionEvent>();
+  for (const event of graph.events) {
+    if (event.supersedes !== undefined) replacedBy.set(event.supersedes, event);
+  }
+  const resolve = (event: TransitionEvent): TransitionEvent => {
+    let current = event;
+    const seen = new Set<string>();
+    while (replacedBy.has(current.id) && !seen.has(current.id)) {
+      seen.add(current.id);
+      current = replacedBy.get(current.id)!;
+    }
+    return current;
+  };
+  return graph.events.filter((event) => event.supersedes === undefined).map(resolve);
+};
+
 export const reduceLifecycle = (
   graph: WorkGraph,
 ): ReadonlyMap<string, LifecycleState | "locked"> => {
   const state = new Map<string, LifecycleState | "locked">(
     graph.nodes.map((node) => [node.id, "locked"]),
   );
-  for (const event of graph.events) state.set(event.subjectId, event.requestedState);
+  for (const event of effectiveEvents(graph)) state.set(event.subjectId, event.requestedState);
   return state;
 };
