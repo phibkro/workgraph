@@ -1,4 +1,10 @@
-import type { BasisReference, TransitionEvent, WorkGraph } from "./model.ts";
+import type {
+  AuthorityKind,
+  BasisReference,
+  EvidenceCategory,
+  TransitionEvent,
+  WorkGraph,
+} from "./model.ts";
 import type { Derivation, DerivedStatus } from "./derive.ts";
 import { effectiveEvents, validateGraph, validatedTransitionEvidence } from "./graph.ts";
 import { stableStringify } from "./normalize.ts";
@@ -110,6 +116,32 @@ const explainEvent = (
   };
 };
 
+interface TransitionEvidenceSummary {
+  readonly eventId: string;
+  readonly authority: AuthorityKind;
+  readonly evidenceCategory: EvidenceCategory;
+  readonly machineChecked: boolean;
+  readonly humanApprovedAssertion: boolean;
+}
+
+const effectiveEvidenceBySubject = (
+  graph: WorkGraph,
+): ReadonlyMap<string, TransitionEvidenceSummary> => {
+  const summaries = new Map<string, TransitionEvidenceSummary>();
+  for (const event of effectiveEvents(graph)) {
+    const evidence = validatedTransitionEvidence(graph, event);
+    if (evidence === undefined) continue;
+    summaries.set(event.subjectId, {
+      eventId: event.id,
+      authority: evidence.authority,
+      evidenceCategory: evidence.category,
+      machineChecked: evidence.machineChecked,
+      humanApprovedAssertion: evidence.humanApprovedAssertion,
+    });
+  }
+  return summaries;
+};
+
 interface ScheduleEntry {
   readonly subjectId: string;
   readonly title: string;
@@ -119,7 +151,9 @@ interface ScheduleEntry {
     readonly targetId: string;
     readonly orGroup?: string;
     readonly optional?: true;
+    readonly transitionEvidence?: TransitionEvidenceSummary;
   }>;
+  readonly transitionEvidence?: TransitionEvidenceSummary;
   readonly layer: number;
 }
 
@@ -159,9 +193,11 @@ const dependencySchedule = (
   }
 
   const nodesById = new Map(graph.nodes.map((node) => [node.id, node]));
+  const evidenceBySubject = effectiveEvidenceBySubject(graph);
   const entries = participantIds.map((id): ScheduleEntry => {
     const node = nodesById.get(id);
-    return {
+    const transitionEvidence = evidenceBySubject.get(id);
+    const entry: ScheduleEntry = {
       subjectId: id,
       title: node?.title ?? id,
       kind: node?.kind ?? "unknown",
@@ -171,14 +207,24 @@ const dependencySchedule = (
         .map((edge) => {
           const orGroup = edge.attributes?.["orGroup"];
           const optional = edge.attributes?.["optional"] === true;
-          if (optional) return { targetId: edge.to, optional: true as const };
-          return typeof orGroup === "string"
-            ? { targetId: edge.to, orGroup }
-            : { targetId: edge.to };
+          const dependencyEvidence = evidenceBySubject.get(edge.to);
+          const dependency: ScheduleEntry["dependsOn"][number] = {
+            targetId: edge.to,
+          };
+          if (optional) Object.assign(dependency, { optional: true as const });
+          if (typeof orGroup === "string") Object.assign(dependency, { orGroup });
+          if (dependencyEvidence !== undefined) {
+            Object.assign(dependency, { transitionEvidence: dependencyEvidence });
+          }
+          return dependency;
         })
         .toSorted((a, b) => byCodeUnit(a.targetId, b.targetId)),
       layer: layers.get(id) ?? 0,
     };
+    if (transitionEvidence !== undefined) {
+      Object.assign(entry, { transitionEvidence });
+    }
+    return entry;
   });
   return { ok: true, entries };
 };
@@ -204,9 +250,9 @@ const mermaidRoadmap = (
   ].toSorted(byCodeUnit);
   const nodesById = new Map(graph.nodes.map((node) => [node.id, node]));
   const humanApprovedSubjects = new Set(
-    graph.events
-      .filter((event) => validatedTransitionEvidence(graph, event)?.humanApprovedAssertion === true)
-      .map((event) => event.subjectId),
+    [...effectiveEvidenceBySubject(graph)]
+      .filter(([, evidence]) => evidence.humanApprovedAssertion)
+      .map(([subjectId]) => subjectId),
   );
 
   const lines: Array<string> = [
@@ -368,6 +414,26 @@ export const projectAll = (
       event.fulfillsRequest === undefined ? [] : [event.fulfillsRequest],
     ),
   );
+  const evidenceBySubject = effectiveEvidenceBySubject(graph);
+  const evidenceByEvent = new Map(
+    [...evidenceBySubject.values()].map((evidence) => [evidence.eventId, evidence]),
+  );
+  const sourceTransitionEvidence = (
+    eventIds: ReadonlyArray<string>,
+  ): ReadonlyArray<TransitionEvidenceSummary> =>
+    eventIds.flatMap((eventId) => {
+      const evidence = evidenceByEvent.get(eventId);
+      return evidence === undefined ? [] : [evidence];
+    });
+  const withTransitionEvidence = <T extends { readonly targetId: string }>(
+    prerequisite: T,
+  ): T & { readonly transitionEvidence?: TransitionEvidenceSummary } => {
+    const transitionEvidence = evidenceBySubject.get(prerequisite.targetId);
+    return {
+      ...prerequisite,
+      ...(transitionEvidence === undefined ? {} : { transitionEvidence }),
+    };
+  };
 
   const roadmap = {
     canonicalDigest: `sha256:${canonicalDigest}`,
@@ -375,18 +441,48 @@ export const projectAll = (
     policy: derivation.policy,
     policyVersion: derivation.policyVersion,
     frontier: derivation.frontier,
-    capabilities: derivation.capabilities.map((capability) => ({
-      capabilityId: capability.capabilityId,
-      title:
-        graph.nodes.find((node) => node.id === capability.capabilityId)?.title ??
-        capability.capabilityId,
-      derivedValue: statusById.get(capability.capabilityId)?.value ?? "invalid",
-      maturity: capability,
-      prerequisites:
-        derivation.prerequisites.find((report) => report.subjectId === capability.capabilityId) ??
-        null,
-      derivedStatus: statusById.get(capability.capabilityId) ?? null,
-    })),
+    capabilities: derivation.capabilities.map((capability) => {
+      const prerequisites = derivation.prerequisites.find(
+        (report) => report.subjectId === capability.capabilityId,
+      );
+      const transitionEvidence = evidenceBySubject.get(capability.capabilityId);
+      const derivedStatus = statusById.get(capability.capabilityId);
+      return {
+        capabilityId: capability.capabilityId,
+        title:
+          graph.nodes.find((node) => node.id === capability.capabilityId)?.title ??
+          capability.capabilityId,
+        derivedValue: statusById.get(capability.capabilityId)?.value ?? "invalid",
+        maturity: {
+          ...capability,
+          satisfiedRungs: capability.satisfiedRungs.map((rung) => ({
+            ...rung,
+            sourceTransitionEvidence: sourceTransitionEvidence(rung.sourceEvents),
+          })),
+        },
+        prerequisites:
+          prerequisites === undefined
+            ? null
+            : {
+                ...prerequisites,
+                andPrerequisites: prerequisites.andPrerequisites.map(withTransitionEvidence),
+                orGroups: prerequisites.orGroups.map((group) => ({
+                  ...group,
+                  alternatives: group.alternatives.map(withTransitionEvidence),
+                })),
+                optionalPrerequisites:
+                  prerequisites.optionalPrerequisites.map(withTransitionEvidence),
+              },
+        ...(transitionEvidence === undefined ? {} : { transitionEvidence }),
+        derivedStatus:
+          derivedStatus === undefined
+            ? null
+            : {
+                ...derivedStatus,
+                sourceTransitionEvidence: sourceTransitionEvidence(derivedStatus.sourceEvents),
+              },
+      };
+    }),
     unlocks: derivation.unlocks,
     limitations: [
       "Derived values are projections of accepted canonical events; they claim nothing beyond their sources.",

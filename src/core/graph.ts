@@ -256,6 +256,13 @@ export const validateGraph = (graph: WorkGraph): ValidationResult => {
         detail: `Request ${request.id} references missing subject ${request.subjectId}.`,
       });
     }
+    if (request.declaredInRepository.length === 0) {
+      issues.push({
+        code: "empty_request_repository",
+        subject: request.id,
+        detail: `Request ${request.id} requires a canonical repository identity.`,
+      });
+    }
   }
 
   for (const edge of graph.edges) {
@@ -355,12 +362,23 @@ export const validateGraph = (graph: WorkGraph): ValidationResult => {
           detail: "A fulfilling event must match an existing request subject and state.",
         });
       }
-      if (!event.basis.some((reference) => reference.kind === "git_commit")) {
+      const observedCommits = event.basis.filter((reference) => reference.kind === "git_commit");
+      if (observedCommits.length === 0) {
         issues.push({
           code: "request_fulfillment_without_commit",
           subject: event.id,
           detail:
             "Fulfilling a commit-declared request requires observing the immutable resulting commit.",
+        });
+      } else if (
+        request !== undefined &&
+        !observedCommits.some((reference) => reference.repository === request.declaredInRepository)
+      ) {
+        issues.push({
+          code: "request_fulfillment_repository_mismatch",
+          subject: event.id,
+          detail:
+            "The exact Git commit fulfilling a request must use the request's declared canonical repository identity.",
         });
       }
     }

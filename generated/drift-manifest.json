@@ -7,7 +7,7 @@
     },
     {
       "path": "capability-roadmap.json",
-      "sha256": "9c577b2e7d48d25045bfa396f3491fef245a1df6044304a55008ed551e03d149"
+      "sha256": "4dfd243ad5dc262aa23a13451de8aa7380483a481e08173a265f79a4ed4b7fda"
     },
     {
       "path": "capability-roadmap.mmd",
@@ -15,7 +15,7 @@
     },
     {
       "path": "dependency-schedule.json",
-      "sha256": "b7dd1f87df24a6b1e33fba71439452edb45702e1a3bfb3e1b2dc2fd5992c5a26"
+      "sha256": "3db5e174697b507a71e7992ff0b6d3ec16cd580b26cb0f50fd0c461756d1025c"
     },
     {
       "path": "milestone-status.md",

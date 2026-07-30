@@ -7,14 +7,28 @@
     {
       "dependsOn": [
         {
-          "targetId": "design:lag-probe"
+          "targetId": "design:lag-probe",
+          "transitionEvidence": {
+            "authority": "human_approval",
+            "eventId": "event:design-achieved",
+            "evidenceCategory": "human_approved_assertion",
+            "humanApprovedAssertion": true,
+            "machineChecked": false
+          }
         },
         {
           "optional": true,
           "targetId": "exp:replay-harness"
         },
         {
-          "targetId": "gate:0001-accept"
+          "targetId": "gate:0001-accept",
+          "transitionEvidence": {
+            "authority": "machine_policy",
+            "eventId": "event:gate-achieved",
+            "evidenceCategory": "machine_check",
+            "humanApprovedAssertion": false,
+            "machineChecked": true
+          }
         }
       ],
       "derivedValue": "available",
@@ -39,7 +53,14 @@
       "dependsOn": [
         {
           "orGroup": "realization",
-          "targetId": "exp:lag-probe"
+          "targetId": "exp:lag-probe",
+          "transitionEvidence": {
+            "authority": "machine_policy",
+            "eventId": "event:exp-achieved",
+            "evidenceCategory": "machine_check",
+            "humanApprovedAssertion": false,
+            "machineChecked": true
+          }
         },
         {
           "orGroup": "realization",
@@ -58,7 +79,14 @@
       "kind": "design_contract",
       "layer": 0,
       "subjectId": "design:lag-probe",
-      "title": "Frozen lag-probe design"
+      "title": "Frozen lag-probe design",
+      "transitionEvidence": {
+        "authority": "human_approval",
+        "eventId": "event:design-achieved",
+        "evidenceCategory": "human_approved_assertion",
+        "humanApprovedAssertion": true,
+        "machineChecked": false
+      }
     },
     {
       "dependsOn": [],
@@ -66,7 +94,14 @@
       "kind": "work_item",
       "layer": 0,
       "subjectId": "exp:lag-probe",
-      "title": "Lag-probe tracer experiment"
+      "title": "Lag-probe tracer experiment",
+      "transitionEvidence": {
+        "authority": "machine_policy",
+        "eventId": "event:exp-achieved",
+        "evidenceCategory": "machine_check",
+        "humanApprovedAssertion": false,
+        "machineChecked": true
+      }
     },
     {
       "dependsOn": [],
@@ -82,7 +117,14 @@
       "kind": "acceptance_gate",
       "layer": 0,
       "subjectId": "gate:0001-accept",
-      "title": "Tracer acceptance gate 0001"
+      "title": "Tracer acceptance gate 0001",
+      "transitionEvidence": {
+        "authority": "machine_policy",
+        "eventId": "event:gate-achieved",
+        "evidenceCategory": "machine_check",
+        "humanApprovedAssertion": false,
+        "machineChecked": true
+      }
     }
   ],
   "generator": "workgraph-tracer-0001-projector/1",

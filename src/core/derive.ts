@@ -1,4 +1,13 @@
-import type { LifecycleState, TransitionEvent, WorkEdge, WorkGraph, WorkNode } from "./model.ts";
+import type {
+  AuthorityKind,
+  EvidenceCategory,
+  EvidenceRole,
+  LifecycleState,
+  TransitionEvent,
+  WorkEdge,
+  WorkGraph,
+  WorkNode,
+} from "./model.ts";
 import { effectiveEvents, validateGraph, validatedTransitionEvidence } from "./graph.ts";
 
 export const DERIVATION_POLICY = "workgraph.policy.roadmap-derivation";
@@ -61,6 +70,39 @@ export const MATURITY_RUNGS = [
 ] as const;
 
 export type MaturityRung = (typeof MATURITY_RUNGS)[number];
+
+interface MaturityEvidenceAdmission {
+  readonly authority: AuthorityKind;
+  readonly evidenceCategory: EvidenceCategory;
+}
+
+export const MATURITY_EVIDENCE_POLICY: Readonly<
+  Record<EvidenceRole, ReadonlyArray<MaturityEvidenceAdmission>>
+> = {
+  independent_review: [
+    {
+      authority: "human_approval",
+      evidenceCategory: "human_approved_assertion",
+    },
+    {
+      authority: "imported_observation",
+      evidenceCategory: "external_observation",
+    },
+  ],
+  integration_observation: [
+    { authority: "machine_policy", evidenceCategory: "machine_check" },
+    {
+      authority: "imported_observation",
+      evidenceCategory: "external_observation",
+    },
+  ],
+  operational_observation: [
+    {
+      authority: "imported_observation",
+      evidenceCategory: "external_observation",
+    },
+  ],
+};
 
 export interface RungEvidence {
   readonly rung: MaturityRung;
@@ -503,16 +545,27 @@ export const deriveRoadmap = (graph: WorkGraph): Derivation => {
     const observationRung = (
       rung: MaturityRung,
       rule: string,
-      category: string,
+      category: EvidenceRole,
     ): RungEvidence | undefined => {
-      const edges = graph.edges.filter(
-        (edge) =>
-          edge.kind === "supports" &&
-          edge.to === capability.id &&
-          nodesById.get(edge.from)?.kind === "evidence" &&
-          nodesById.get(edge.from)?.evidenceRole === category &&
-          lifecycle.get(edge.from)?.state === "achieved",
-      );
+      const edges = graph.edges.filter((edge) => {
+        if (
+          edge.kind !== "supports" ||
+          edge.to !== capability.id ||
+          nodesById.get(edge.from)?.kind !== "evidence" ||
+          nodesById.get(edge.from)?.evidenceRole !== category
+        ) {
+          return false;
+        }
+        const fact = lifecycle.get(edge.from);
+        if (fact?.state !== "achieved") return false;
+        const evidence = validatedTransitionEvidence(graph, fact.event);
+        if (evidence === undefined) return false;
+        return MATURITY_EVIDENCE_POLICY[category].some(
+          (admission) =>
+            admission.authority === evidence.authority &&
+            admission.evidenceCategory === evidence.category,
+        );
+      });
       if (edges.length === 0) return undefined;
       return {
         rung,

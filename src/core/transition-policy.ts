@@ -97,6 +97,7 @@ export interface PolicyIssue {
 }
 
 export interface ValidatedTransitionEvidence {
+  readonly authority: AuthorityKind;
   readonly category: EvidenceCategory;
   readonly machineChecked: boolean;
   readonly humanApprovedAssertion: boolean;
@@ -261,6 +262,7 @@ export const evaluateTransitionPolicy = (
     policy,
     issues: [],
     evidence: {
+      authority: policy.authority,
       category: policy.evidenceCategory,
       machineChecked: policy.authority === "machine_policy",
       humanApprovedAssertion: policy.authority === "human_approval",

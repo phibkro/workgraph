@@ -66,6 +66,16 @@ license grant.
 - Imported records require an immutable observed revision in tracer 0001.
   Their interpretation remains provider-limited and does not automatically
   become a completion judgment.
+- A typed evidence role is authored interpretation, not sufficient maturity
+  evidence. Review, integration, and operational rungs additionally require a
+  validated authority/category pair admitted for that role; an agent assertion
+  cannot establish those rungs. The bounded table admits human approval or an
+  imported observation for independent review, a machine check or imported
+  observation for integration, and only an imported observation for
+  operational observation.
+- A commit-declared request is fulfilled only by an exact Git reference using
+  the same canonical repository identity declared by the request. String
+  equality does not authenticate that repository identity.
 - Graph-event references establish stable canonical event identity and
   supersession custody. The local typed fixture is not a tamper-resistant
   distributed store.

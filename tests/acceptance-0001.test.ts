@@ -151,6 +151,79 @@ describe("acceptance for design spec 0001", () => {
     expect(milestone.content).toContain("human-approved assertion; machine_checked: false");
     const mermaid = builtViews.files.find((file) => file.path === "capability-roadmap.mmd")!;
     expect(mermaid.content).toContain("human-approved assertion, machine_checked: false");
+
+    type EvidenceLabel = {
+      eventId: string;
+      authority: string;
+      evidenceCategory: string;
+      machineChecked: boolean;
+      humanApprovedAssertion: boolean;
+    };
+    const roadmap = JSON.parse(
+      builtViews.files.find((file) => file.path === "capability-roadmap.json")!.content,
+    ) as {
+      capabilities: ReadonlyArray<{
+        capabilityId: string;
+        maturity: {
+          satisfiedRungs: ReadonlyArray<{
+            rung: string;
+            sourceTransitionEvidence: ReadonlyArray<EvidenceLabel>;
+          }>;
+        };
+        prerequisites: {
+          andPrerequisites: ReadonlyArray<{
+            targetId: string;
+            transitionEvidence?: EvidenceLabel;
+          }>;
+        } | null;
+        derivedStatus: {
+          sourceTransitionEvidence: ReadonlyArray<EvidenceLabel>;
+        } | null;
+      }>;
+    };
+    const lagCapability = roadmap.capabilities.find(
+      (capability) => capability.capabilityId === "cap:lag-attribution",
+    )!;
+    const designPrerequisite = lagCapability.prerequisites!.andPrerequisites.find(
+      (prerequisite) => prerequisite.targetId === "design:lag-probe",
+    )!;
+    const expectedHumanEvidence: EvidenceLabel = {
+      eventId: "event:design-achieved",
+      authority: "human_approval",
+      evidenceCategory: "human_approved_assertion",
+      machineChecked: false,
+      humanApprovedAssertion: true,
+    };
+    expect(designPrerequisite.transitionEvidence).toEqual(expectedHumanEvidence);
+    expect(
+      lagCapability.maturity.satisfiedRungs.find((rung) => rung.rung === "specified")!
+        .sourceTransitionEvidence,
+    ).toContainEqual(expectedHumanEvidence);
+    expect(lagCapability.derivedStatus!.sourceTransitionEvidence).toContainEqual(
+      expectedHumanEvidence,
+    );
+
+    const schedule = JSON.parse(
+      builtViews.files.find((file) => file.path === "dependency-schedule.json")!.content,
+    ) as {
+      entries: ReadonlyArray<{
+        subjectId: string;
+        transitionEvidence?: EvidenceLabel;
+        dependsOn: ReadonlyArray<{
+          targetId: string;
+          transitionEvidence?: EvidenceLabel;
+        }>;
+      }>;
+    };
+    expect(
+      schedule.entries.find((entry) => entry.subjectId === "design:lag-probe")!.transitionEvidence,
+    ).toEqual(expectedHumanEvidence);
+    expect(
+      schedule.entries
+        .find((entry) => entry.subjectId === "cap:lag-attribution")!
+        .dependsOn.find((dependency) => dependency.targetId === "design:lag-probe")!
+        .transitionEvidence,
+    ).toEqual(expectedHumanEvidence);
   });
 
   test("item 6: an agent's untyped done assertion cannot satisfy a machine-check gate", () => {
@@ -231,6 +304,18 @@ describe("acceptance for design spec 0001", () => {
     const fulfilled = withEvents(clone(tracerFixture), (events) => [...events, observerEvent]);
     expect(validateGraph(normalizeGraph(fulfilled)).accepted).toBeTrue();
     expect(reduceLifecycle(normalizeGraph(fulfilled)).get("exp:replay-harness")).toBe("active");
+
+    const unrelatedRepositoryEvent = structuredClone(observerEvent);
+    const observedCommit = unrelatedRepositoryEvent.basis.find(
+      (reference) => reference.kind === "git_commit",
+    )!;
+    (observedCommit as { repository: string }).repository =
+      "https://example.invalid/unrelated/repository";
+    const unrelatedRepository = withEvents(clone(tracerFixture), (events) => [
+      ...events,
+      unrelatedRepositoryEvent,
+    ]);
+    expect(issueCodes(unrelatedRepository)).toContain("request_fulfillment_repository_mismatch");
   });
 
   test("item 8: correcting a transition supersedes and preserves the prior event", () => {
@@ -678,6 +763,40 @@ describe("acceptance for design spec 0001", () => {
     expect(typedMaturity.satisfiedRungs.map((entry) => entry.rung)).toContain(
       "operationally_observed",
     );
+  });
+
+  test("authored evidence roles cannot promote an agent assertion to observed maturity", () => {
+    for (const [evidenceRole, forbiddenRung] of [
+      ["independent_review", "independently_reviewed"],
+      ["integration_observation", "integrated"],
+      ["operational_observation", "operationally_observed"],
+    ] as const) {
+      const asserted = clone(tracerFixture);
+      const incident = asserted.nodes.find((node) => node.id === "ev:clock-skew-incident")!;
+      (incident as { evidenceRole?: string }).evidenceRole = evidenceRole;
+      (asserted as unknown as { edges: WorkGraph["edges"] }).edges = [
+        ...asserted.edges,
+        {
+          id: `edge:${evidenceRole}-supports-capability`,
+          kind: "supports",
+          from: incident.id,
+          to: "cap:lag-attribution",
+        },
+      ];
+      const incidentEvent = asserted.events.find(
+        (event) => event.id === "event:clock-skew-observed",
+      )!;
+      (incidentEvent as { authority: string }).authority = "administrative_assertion";
+      (incidentEvent as { evidenceCategory: string }).evidenceCategory = "agent_assertion";
+      (incidentEvent as { policy: string }).policy = "workgraph.policy.administrative";
+
+      const normalized = normalizeGraph(asserted);
+      expect(validateGraph(normalized).accepted).toBeTrue();
+      const maturity = deriveRoadmap(normalized).capabilities.find(
+        (entry) => entry.capabilityId === "cap:lag-attribution",
+      )!;
+      expect(maturity.satisfiedRungs.map((entry) => entry.rung)).not.toContain(forbiddenRung);
+    }
   });
 
   test("append order, not observation timestamps, determines lifecycle replay", () => {

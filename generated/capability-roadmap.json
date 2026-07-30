@@ -27,6 +27,22 @@
           "design:lag-probe",
           "gate:0001-accept"
         ],
+        "sourceTransitionEvidence": [
+          {
+            "authority": "human_approval",
+            "eventId": "event:design-achieved",
+            "evidenceCategory": "human_approved_assertion",
+            "humanApprovedAssertion": true,
+            "machineChecked": false
+          },
+          {
+            "authority": "machine_policy",
+            "eventId": "event:gate-achieved",
+            "evidenceCategory": "machine_check",
+            "humanApprovedAssertion": false,
+            "machineChecked": true
+          }
+        ],
         "subjectId": "cap:lag-attribution",
         "unsatisfiedPrerequisites": [],
         "value": "available"
@@ -50,6 +66,15 @@
             ],
             "sourceNodes": [
               "rq:lag-attribution"
+            ],
+            "sourceTransitionEvidence": [
+              {
+                "authority": "administrative_assertion",
+                "eventId": "event:rq-achieved",
+                "evidenceCategory": "agent_assertion",
+                "humanApprovedAssertion": false,
+                "machineChecked": false
+              }
             ]
           },
           {
@@ -63,6 +88,15 @@
             ],
             "sourceNodes": [
               "design:lag-probe"
+            ],
+            "sourceTransitionEvidence": [
+              {
+                "authority": "human_approval",
+                "eventId": "event:design-achieved",
+                "evidenceCategory": "human_approved_assertion",
+                "humanApprovedAssertion": true,
+                "machineChecked": false
+              }
             ]
           },
           {
@@ -76,6 +110,15 @@
             ],
             "sourceNodes": [
               "gate:0001-accept"
+            ],
+            "sourceTransitionEvidence": [
+              {
+                "authority": "machine_policy",
+                "eventId": "event:gate-achieved",
+                "evidenceCategory": "machine_check",
+                "humanApprovedAssertion": false,
+                "machineChecked": true
+              }
             ]
           }
         ],
@@ -90,12 +133,26 @@
           {
             "edgeId": "edge:cap-lag-requires-design",
             "satisfied": true,
-            "targetId": "design:lag-probe"
+            "targetId": "design:lag-probe",
+            "transitionEvidence": {
+              "authority": "human_approval",
+              "eventId": "event:design-achieved",
+              "evidenceCategory": "human_approved_assertion",
+              "humanApprovedAssertion": true,
+              "machineChecked": false
+            }
           },
           {
             "edgeId": "edge:cap-lag-requires-gate",
             "satisfied": true,
-            "targetId": "gate:0001-accept"
+            "targetId": "gate:0001-accept",
+            "transitionEvidence": {
+              "authority": "machine_policy",
+              "eventId": "event:gate-achieved",
+              "evidenceCategory": "machine_check",
+              "humanApprovedAssertion": false,
+              "machineChecked": true
+            }
           }
         ],
         "optionalPrerequisites": [
@@ -127,6 +184,7 @@
         "sourceNodes": [
           "cap:lag-attribution"
         ],
+        "sourceTransitionEvidence": [],
         "subjectId": "cap:multi-region",
         "unsatisfiedPrerequisites": [
           "requires cap:lag-attribution achieved"
@@ -185,6 +243,15 @@
           "exp:replay-harness",
           "exp:lag-probe"
         ],
+        "sourceTransitionEvidence": [
+          {
+            "authority": "machine_policy",
+            "eventId": "event:exp-achieved",
+            "evidenceCategory": "machine_check",
+            "humanApprovedAssertion": false,
+            "machineChecked": true
+          }
+        ],
         "subjectId": "cap:replay-validation",
         "unsatisfiedPrerequisites": [],
         "value": "available"
@@ -208,6 +275,15 @@
             ],
             "sourceNodes": [
               "exp:lag-probe"
+            ],
+            "sourceTransitionEvidence": [
+              {
+                "authority": "machine_policy",
+                "eventId": "event:exp-achieved",
+                "evidenceCategory": "machine_check",
+                "humanApprovedAssertion": false,
+                "machineChecked": true
+              }
             ]
           }
         ],
@@ -233,7 +309,14 @@
               {
                 "edgeId": "edge:cap-replay-or-probe",
                 "satisfied": true,
-                "targetId": "exp:lag-probe"
+                "targetId": "exp:lag-probe",
+                "transitionEvidence": {
+                  "authority": "machine_policy",
+                  "eventId": "event:exp-achieved",
+                  "evidenceCategory": "machine_check",
+                  "humanApprovedAssertion": false,
+                  "machineChecked": true
+                }
               }
             ],
             "group": "realization",
