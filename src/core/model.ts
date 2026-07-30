@@ -118,11 +118,21 @@ export type BasisReference =
   | HumanApprovalReference
   | GraphEventReference;
 
+export type EvidenceRole =
+  | "independent_review"
+  | "integration_observation"
+  | "operational_observation";
+
 export interface WorkNode {
   readonly id: string;
   readonly kind: NodeKind;
   readonly title: string;
   readonly exactSubject?: ExactSubjectReference;
+  /**
+   * Typed interpretation of an evidence node. This is not a transition
+   * evidence category and is valid only when `kind` is `evidence`.
+   */
+  readonly evidenceRole?: EvidenceRole;
   readonly attributes?: Readonly<Record<string, string | number | boolean>>;
 }
 

@@ -5,7 +5,7 @@ import { validateGraph } from "../core/graph.ts";
 import { normalizeGraph, stableStringify } from "../core/normalize.ts";
 import { PROJECTION_GENERATOR, projectAll } from "../core/projections.ts";
 import type { ProjectionFile } from "../core/projections.ts";
-import { evidenceManifest } from "../acceptance/manifest.ts";
+import { coverageManifest } from "../acceptance/manifest.ts";
 import { tracerFixture } from "../fixture/tracer-0001.ts";
 
 /**
@@ -74,8 +74,8 @@ export const buildViews: Effect.Effect<BuiltViews, JourneyFailure, Sha256> = Eff
     const files: Array<ProjectionFile> = [
       ...outcome.files,
       {
-        path: "acceptance-evidence.json",
-        content: stableStringify(evidenceManifest(canonicalDigest)),
+        path: "acceptance-contract-coverage.json",
+        content: stableStringify(coverageManifest(canonicalDigest)),
       },
     ];
 

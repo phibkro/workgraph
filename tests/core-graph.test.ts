@@ -122,6 +122,7 @@ describe("canonical graph validation", () => {
             authority: "human_approval",
             evidenceCategory: "human_approved_assertion",
             basis: [approval],
+            policy: "workgraph.policy.human-approval",
           }),
         ],
       }),
@@ -161,13 +162,14 @@ describe("canonical graph validation", () => {
   test("preserves and explicitly references superseded events", () => {
     const correction = transition({
       id: "event:artifact-corrected",
-      priorState: "achieved",
+      priorState: null,
       requestedState: "stale",
       transitionKind: "correct",
       supersedes: "event:artifact-achieved",
       basis: [{ kind: "graph_event", eventId: "event:artifact-achieved" }, commitA],
       authority: "administrative_assertion",
       evidenceCategory: "agent_assertion",
+      policy: "workgraph.policy.administrative",
     });
     const result = validateGraph(graph({ events: [transition(), correction] }));
 

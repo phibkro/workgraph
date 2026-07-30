@@ -12,9 +12,10 @@ export const normalizeGraph = (graph: WorkGraph): WorkGraph => ({
   schemaVersion: graph.schemaVersion,
   nodes: graph.nodes.toSorted((a, b) => byCodeUnit(a.id, b.id)),
   edges: graph.edges.toSorted((a, b) => byCodeUnit(a.id, b.id)),
-  events: graph.events.toSorted(
-    (a, b) => byCodeUnit(a.observedAt, b.observedAt) || byCodeUnit(a.id, b.id),
-  ),
+  // Event array order is canonical append order. `observedAt` records when
+  // evidence was observed; sorting by it would let a late or corrected clock
+  // rewrite lifecycle causality.
+  events: [...graph.events],
   requests: graph.requests.toSorted((a, b) => byCodeUnit(a.id, b.id)),
 });
 

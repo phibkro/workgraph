@@ -3,15 +3,16 @@
  *
  * Owns: the observable Bun/Node tracer journey, byte-equivalence comparison,
  * the generated-view drift check, the unsupported-claims scan, and the
- * acceptance-item evidence manifest. A missing runtime or tool is a failure,
- * never a warning.
+ * acceptance-contract coverage map. The generated map is not run evidence.
+ * A missing runtime or tool is a failure, never a warning.
  */
 import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Console, Effect } from "effect";
 import { unsupportedClaimFindings } from "../src/acceptance/claims.ts";
-import { ACCEPTANCE_TEST_FILE, acceptanceEvidence } from "../src/acceptance/manifest.ts";
+import { ACCEPTANCE_TEST_FILE, acceptanceCoverage } from "../src/acceptance/manifest.ts";
+import { stableStringify } from "../src/core/normalize.ts";
 
 const projectRoot = import.meta.dir.endsWith("/scripts")
   ? import.meta.dir.slice(0, -"/scripts".length)
@@ -136,7 +137,11 @@ const claimsScan = Effect.gen(function* () {
     // would only re-confirm the projector.
     const canonical = JSON.parse(
       await readFile(join(generatedDir, "normalized-graph.json"), "utf8"),
-    ) as { events: ReadonlyArray<{ id: string; authority: string }> };
+    ) as {
+      canonicalGraph: {
+        events: ReadonlyArray<{ id: string; authority: string }>;
+      };
+    };
     const explanations = JSON.parse(
       await readFile(join(generatedDir, "transition-explanations.json"), "utf8"),
     ) as {
@@ -148,7 +153,7 @@ const claimsScan = Effect.gen(function* () {
       }>;
     };
     const explanationById = new Map(explanations.events.map((event) => [event.id, event]));
-    for (const event of canonical.events) {
+    for (const event of canonical.canonicalGraph.events) {
       if (event.authority !== "human_approval") continue;
       const explained = explanationById.get(event.id);
       if (
@@ -176,9 +181,7 @@ const digestBinding = Effect.gen(function* () {
     const manifest = JSON.parse(
       await readFile(join(generatedDir, "drift-manifest.json"), "utf8"),
     ) as { canonicalDigest: string; files: ReadonlyArray<{ path: string; sha256: string }> };
-    const names = (await readdir(generatedDir))
-      .toSorted()
-      .filter((name) => name !== "normalized-graph.json" && name !== "drift-manifest.json");
+    const names = (await readdir(generatedDir)).toSorted();
     const carryFindings = await Promise.all(
       names.map(async (name) => {
         const content = await readFile(join(generatedDir, name), "utf8");
@@ -189,7 +192,10 @@ const digestBinding = Effect.gen(function* () {
     );
     const found: Array<string> = carryFindings.flat();
     const hasher = new Bun.CryptoHasher("sha256");
-    hasher.update(await readFile(join(generatedDir, "normalized-graph.json")));
+    const normalizedProjection = JSON.parse(
+      await readFile(join(generatedDir, "normalized-graph.json"), "utf8"),
+    ) as { canonicalGraph: unknown };
+    hasher.update(stableStringify(normalizedProjection.canonicalGraph));
     const recomputed = `sha256:${hasher.digest("hex")}`;
     if (recomputed !== manifest.canonicalDigest) {
       found.push(
@@ -226,13 +232,13 @@ const program = Effect.gen(function* () {
   yield* claimsScan;
 
   yield* Console.log("");
-  yield* Console.log("Acceptance evidence (per design spec 0001):");
-  for (const item of acceptanceEvidence) {
-    yield* Console.log(`  item ${item.item}: established by ${item.establishedBy.join(" AND ")}`);
+  yield* Console.log("Acceptance contract coverage (per design spec 0001):");
+  for (const item of acceptanceCoverage) {
+    yield* Console.log(`  item ${item.item}: exercised by ${item.exercisedBy.join(" AND ")}`);
   }
   yield* Console.log("");
   yield* Console.log(
-    "accept:0001 passed. These are machine checks bound to this run; they do not establish operational suitability or human intent.",
+    "accept:0001 completed in this process. Exact source/environment/result binding belongs to the external caller or CI observation; this output does not establish operational suitability or human intent.",
   );
 });
 

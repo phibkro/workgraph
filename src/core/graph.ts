@@ -1,12 +1,6 @@
-import type {
-  BasisReference,
-  LifecycleState,
-  TransitionEvent,
-  WorkEdge,
-  WorkGraph,
-  WorkNode,
-} from "./model.ts";
-import { sameExactReference, validateExactReference } from "./references.ts";
+import type { LifecycleState, TransitionEvent, WorkEdge, WorkGraph, WorkNode } from "./model.ts";
+import { validateBasisReference, validateExactReference } from "./references.ts";
+import { evaluateTransitionPolicy, type ValidatedTransitionEvidence } from "./transition-policy.ts";
 
 export interface ValidationIssue {
   readonly code: string;
@@ -69,126 +63,152 @@ const findCycle = (
   return undefined;
 };
 
-const exactReferencesFromBasis = (
-  basis: ReadonlyArray<BasisReference>,
-): ReadonlyArray<ReturnType<typeof extractExactReference>> =>
-  basis.flatMap((reference) => {
-    if (reference.kind === "git_commit" || reference.kind === "artifact") return [reference];
-    if (reference.kind === "machine_check" || reference.kind === "human_approval") {
-      return reference.subjects;
-    }
-    return [];
-  });
-
-const extractExactReference = (reference: BasisReference) => {
-  if (reference.kind === "git_commit" || reference.kind === "artifact") return reference;
-  return undefined;
+const correctionCycle = (
+  event: TransitionEvent,
+  events: ReadonlyMap<string, TransitionEvent>,
+): boolean => {
+  const seen = new Set<string>([event.id]);
+  let targetId = event.supersedes;
+  while (targetId !== undefined) {
+    if (seen.has(targetId)) return true;
+    seen.add(targetId);
+    targetId = events.get(targetId)?.supersedes;
+  }
+  return false;
 };
 
-const validateTransitionPolicy = (
-  event: TransitionEvent,
-  node: WorkNode,
+const correctionIssues = (
+  graph: WorkGraph,
+  events: ReadonlyMap<string, TransitionEvent>,
 ): ReadonlyArray<ValidationIssue> => {
   const issues: Array<ValidationIssue> = [];
+  const positions = new Map(graph.events.map((event, index) => [event.id, index]));
+  const correctorsByTarget = new Map<string, Array<string>>();
 
-  for (const reference of exactReferencesFromBasis(event.basis)) {
-    if (reference === undefined) continue;
-    for (const problem of validateExactReference(reference)) {
+  for (const event of graph.events) {
+    const isCorrection = event.transitionKind === "correct";
+    if (isCorrection !== (event.supersedes !== undefined)) {
       issues.push({
-        code: problem,
+        code: "correction_supersession_mismatch",
         subject: event.id,
-        detail: `Invalid exact reference in transition ${event.id}.`,
+        detail:
+          "Transition kind 'correct' requires supersedes, and no other transition kind may supply it.",
       });
     }
-  }
-
-  if (event.authority === "machine_policy") {
-    const checks = event.basis.filter((reference) => reference.kind === "machine_check");
-    const passing = checks.filter((check) => check.result === "passed" && check.exitCode === 0);
-    if (event.evidenceCategory !== "machine_check" || checks.length === 0) {
-      issues.push({
-        code: "machine_policy_without_check",
-        subject: event.id,
-        detail: "Machine-policy transitions require machine-check evidence.",
-      });
-    } else if (passing.length === 0) {
-      issues.push({
-        code: "machine_check_not_passing",
-        subject: event.id,
-        detail: "At least one bound machine check must pass.",
-      });
-    } else if (node.exactSubject === undefined) {
-      issues.push({
-        code: "machine_policy_unbound_subject",
-        subject: event.id,
-        detail:
-          "A machine-policy transition requires the subject node to declare an exact subject identity for the check to bind to.",
-      });
-    } else if (
-      !passing.some((check) =>
-        check.subjects.some((subject) => sameExactReference(subject, node.exactSubject!)),
-      )
-    ) {
-      // Conjoint binding: a passing check and a matching exact reference in
-      // the basis are not enough independently. The passing check itself must
-      // name the subject's exact reference, or a check for commit A padded
-      // with a bare reference to commit B could unlock B.
-      issues.push({
-        code: "machine_check_not_bound_to_subject",
-        subject: event.id,
-        detail:
-          "No passing machine check names the subject's exact reference; a check for a different subject cannot unlock this node.",
-      });
+    if (!isCorrection || event.supersedes === undefined) {
+      if (event.basis.some((reference) => reference.kind === "graph_event")) {
+        issues.push({
+          code: "graph_event_basis_without_correction",
+          subject: event.id,
+          detail: "Graph-event basis references are reserved for explicit corrections.",
+        });
+      }
+      continue;
     }
-  }
 
-  if (event.authority === "human_approval") {
-    const approvals = event.basis.filter((reference) => reference.kind === "human_approval");
-    const wellFormed = approvals.filter(
-      (approval) =>
-        approval.approvedTransition === event.requestedState && approval.machineChecked === false,
-    );
-    if (event.evidenceCategory !== "human_approved_assertion" || wellFormed.length === 0) {
-      issues.push({
-        code: "human_approval_mislabeled",
-        subject: event.id,
-        detail: "Human authority requires an explicitly non-machine-checked approval.",
-      });
-    } else if (node.exactSubject === undefined) {
-      issues.push({
-        code: "human_approval_unbound_subject",
-        subject: event.id,
-        detail:
-          "A human-approval transition requires the subject node to declare an exact subject identity for the approval to bind to.",
-      });
-    } else if (
-      !wellFormed.some((approval) =>
-        approval.subjects.some((subject) => sameExactReference(subject, node.exactSubject!)),
-      )
+    correctorsByTarget.set(event.supersedes, [
+      ...(correctorsByTarget.get(event.supersedes) ?? []),
+      event.id,
+    ]);
+    const target = events.get(event.supersedes);
+    const eventPosition = positions.get(event.id);
+    const targetPosition = positions.get(event.supersedes);
+    if (
+      target === undefined ||
+      target.subjectId !== event.subjectId ||
+      eventPosition === undefined ||
+      targetPosition === undefined ||
+      targetPosition >= eventPosition
     ) {
       issues.push({
-        code: "human_approval_not_bound_to_subject",
+        code: "invalid_supersession",
         subject: event.id,
         detail:
-          "No qualifying approval names the subject's exact reference; an approval about a different artifact cannot advance this node.",
+          "A correction must supersede an earlier existing event for the same subject in append order.",
       });
-    }
-  }
-
-  if (node.exactSubject !== undefined) {
-    const bound = exactReferencesFromBasis(event.basis).some(
-      (reference) => reference !== undefined && sameExactReference(reference, node.exactSubject!),
-    );
-    if (!bound) {
+    } else if (event.priorState !== target.priorState) {
       issues.push({
-        code: "exact_subject_mismatch",
+        code: "correction_prior_state_mismatch",
         subject: event.id,
-        detail: "Transition evidence is not bound to the subject's exact reference.",
+        detail:
+          "A correction replaces the target at its original position and must preserve that event's prior state.",
+      });
+    }
+
+    const graphEventIds = event.basis.flatMap((reference) =>
+      reference.kind === "graph_event" ? [reference.eventId] : [],
+    );
+    if (graphEventIds.length !== 1 || graphEventIds[0] !== event.supersedes) {
+      issues.push({
+        code: "correction_event_basis_mismatch",
+        subject: event.id,
+        detail:
+          "A correction must contain exactly one graph-event basis naming the exact superseded event.",
+      });
+    }
+    if (correctionCycle(event, events)) {
+      issues.push({
+        code: "correction_cycle",
+        subject: event.id,
+        detail: "Correction supersession chains must be acyclic.",
       });
     }
   }
 
+  for (const [target, correctors] of correctorsByTarget) {
+    if (correctors.length > 1) {
+      for (const corrector of correctors) {
+        issues.push({
+          code: "competing_corrections",
+          subject: corrector,
+          detail: `Event ${target} has competing direct corrections: ${correctors.join(", ")}.`,
+        });
+      }
+    }
+  }
   return issues;
+};
+
+/**
+ * Replays event history with each correction at the position of the event it
+ * supersedes. Canonical array order is append order; `observedAt` is evidence,
+ * never an ordering authority.
+ */
+export const effectiveEvents = (graph: WorkGraph): ReadonlyArray<TransitionEvent> => {
+  const replacedBy = new Map<string, TransitionEvent>();
+  for (const event of graph.events) {
+    if (event.transitionKind === "correct" && event.supersedes !== undefined) {
+      replacedBy.set(event.supersedes, event);
+    }
+  }
+  const resolve = (event: TransitionEvent): TransitionEvent => {
+    let current = event;
+    const seen = new Set<string>();
+    while (replacedBy.has(current.id) && !seen.has(current.id)) {
+      seen.add(current.id);
+      current = replacedBy.get(current.id)!;
+    }
+    return current;
+  };
+  return graph.events.filter((event) => event.transitionKind !== "correct").map(resolve);
+};
+
+/**
+ * Evidence semantics for an event in an already accepted graph. Callers do
+ * not derive labels from the event's free category string; the named policy
+ * must resolve and validate its authority and bound evidence first.
+ */
+export const validatedTransitionEvidence = (
+  graph: WorkGraph,
+  event: TransitionEvent,
+): ValidatedTransitionEvidence | undefined => {
+  const node = graph.nodes.find((candidate) => candidate.id === event.subjectId);
+  if (node === undefined) return undefined;
+  if (event.basis.length === 0) return undefined;
+  if (event.basis.some((reference) => validateBasisReference(reference).length > 0)) {
+    return undefined;
+  }
+  return evaluateTransitionPolicy(event, node).evidence;
 };
 
 export const validateGraph = (graph: WorkGraph): ValidationResult => {
@@ -209,6 +229,25 @@ export const validateGraph = (graph: WorkGraph): ValidationResult => {
     issues.push({ code: "duplicate_request", subject: id, detail: `Duplicate request ${id}.` });
   }
 
+  for (const node of graph.nodes) {
+    if (node.exactSubject !== undefined) {
+      for (const problem of validateExactReference(node.exactSubject)) {
+        issues.push({
+          code: problem,
+          subject: node.id,
+          detail: `Node ${node.id} has an invalid exact subject.`,
+        });
+      }
+    }
+    if (node.evidenceRole !== undefined && node.kind !== "evidence") {
+      issues.push({
+        code: "evidence_role_on_non_evidence_node",
+        subject: node.id,
+        detail: "Only evidence nodes may carry a typed evidence role.",
+      });
+    }
+  }
+
   for (const request of graph.requests) {
     if (!nodes.has(request.subjectId)) {
       issues.push({
@@ -227,6 +266,17 @@ export const validateGraph = (graph: WorkGraph): ValidationResult => {
         detail: `Edge ${edge.id} references a missing endpoint.`,
       });
     }
+    if (
+      edge.kind === "requires" &&
+      edge.attributes?.["optional"] === true &&
+      typeof edge.attributes?.["orGroup"] === "string"
+    ) {
+      issues.push({
+        code: "ambiguous_optional_or_prerequisite",
+        subject: edge.id,
+        detail: "A requires edge cannot be both optional and an OR-group alternative.",
+      });
+    }
   }
 
   for (const kind of ["contains", "requires"] as const) {
@@ -240,10 +290,7 @@ export const validateGraph = (graph: WorkGraph): ValidationResult => {
     }
   }
 
-  const latestState = new Map<string, LifecycleState>();
-  const superseded = new Set(
-    graph.events.flatMap((event) => (event.supersedes === undefined ? [] : [event.supersedes])),
-  );
+  issues.push(...correctionIssues(graph, events));
 
   for (const event of graph.events) {
     const node = nodes.get(event.subjectId);
@@ -256,31 +303,43 @@ export const validateGraph = (graph: WorkGraph): ValidationResult => {
       continue;
     }
 
-    const current = latestState.get(event.subjectId) ?? null;
-    if (event.priorState !== current && event.transitionKind !== "correct") {
+    if (event.basis.length === 0) {
       issues.push({
-        code: "prior_state_mismatch",
+        code: "empty_transition_basis",
         subject: event.id,
-        detail: `Expected prior state ${String(current)}, received ${String(event.priorState)}.`,
+        detail: "Every transition requires a nonempty exact basis.",
       });
     }
-
-    if (event.supersedes !== undefined) {
-      const prior = events.get(event.supersedes);
-      if (prior === undefined || prior.subjectId !== event.subjectId) {
+    for (const [code, value, field] of [
+      ["empty_transition_actor", event.actor, "actor"],
+      ["empty_transition_rationale", event.rationale, "rationale"],
+      ["empty_transition_observation_time", event.observedAt, "observedAt"],
+    ] as const) {
+      if (value.length === 0) {
         issues.push({
-          code: "invalid_supersession",
+          code,
           subject: event.id,
-          detail: "A correction must supersede an existing event for the same subject.",
+          detail: `Transition ${event.id} requires a nonempty ${field}.`,
         });
       }
-      if (!event.basis.some((reference) => reference.kind === "graph_event")) {
-        issues.push({
-          code: "supersession_without_event_basis",
-          subject: event.id,
-          detail: "A correction must cite the superseded graph event.",
-        });
-      }
+    }
+    const basisProblems = event.basis.flatMap((reference) => validateBasisReference(reference));
+    for (const problem of basisProblems) {
+      issues.push({
+        code: problem,
+        subject: event.id,
+        detail: `Transition ${event.id} contains a non-exact ${problem} basis reference.`,
+      });
+    }
+    if (
+      event.basis.length > 0 &&
+      !event.basis.some((reference) => validateBasisReference(reference).length === 0)
+    ) {
+      issues.push({
+        code: "transition_without_exact_reference",
+        subject: event.id,
+        detail: "No transition basis reference satisfies its frozen exactness contract.",
+      });
     }
 
     if (event.fulfillsRequest !== undefined) {
@@ -293,7 +352,7 @@ export const validateGraph = (graph: WorkGraph): ValidationResult => {
         issues.push({
           code: "invalid_request_fulfillment",
           subject: event.id,
-          detail: "A fulfilling event must match an existing request's subject and state.",
+          detail: "A fulfilling event must match an existing request subject and state.",
         });
       }
       if (!event.basis.some((reference) => reference.kind === "git_commit")) {
@@ -306,44 +365,29 @@ export const validateGraph = (graph: WorkGraph): ValidationResult => {
       }
     }
 
-    issues.push(...validateTransitionPolicy(event, node));
-    latestState.set(event.subjectId, event.requestedState);
-  }
-
-  for (const eventId of superseded) {
-    if (!events.has(eventId)) {
+    for (const policyIssue of evaluateTransitionPolicy(event, node).issues) {
       issues.push({
-        code: "missing_superseded_event",
-        subject: eventId,
-        detail: `Superseded event ${eventId} does not exist.`,
+        code: policyIssue.code,
+        subject: event.id,
+        detail: policyIssue.detail,
       });
     }
   }
 
-  return { accepted: issues.length === 0, issues };
-};
-
-/**
- * Replays the event history with corrections applied at the position of the
- * event they supersede. A correction replaces the corrected event where it
- * happened; it does not append a new "latest" fact. Otherwise correcting a
- * non-latest event would overwrite later, uncorrected state.
- */
-export const effectiveEvents = (graph: WorkGraph): ReadonlyArray<TransitionEvent> => {
-  const replacedBy = new Map<string, TransitionEvent>();
-  for (const event of graph.events) {
-    if (event.supersedes !== undefined) replacedBy.set(event.supersedes, event);
-  }
-  const resolve = (event: TransitionEvent): TransitionEvent => {
-    let current = event;
-    const seen = new Set<string>();
-    while (replacedBy.has(current.id) && !seen.has(current.id)) {
-      seen.add(current.id);
-      current = replacedBy.get(current.id)!;
+  const latestState = new Map<string, LifecycleState>();
+  for (const event of effectiveEvents(graph)) {
+    const current = latestState.get(event.subjectId) ?? null;
+    if (event.priorState !== current) {
+      issues.push({
+        code: "prior_state_mismatch",
+        subject: event.id,
+        detail: `Effective append-order replay expected prior state ${String(current)}, received ${String(event.priorState)}.`,
+      });
     }
-    return current;
-  };
-  return graph.events.filter((event) => event.supersedes === undefined).map(resolve);
+    latestState.set(event.subjectId, event.requestedState);
+  }
+
+  return { accepted: issues.length === 0, issues };
 };
 
 export const reduceLifecycle = (
@@ -352,6 +396,8 @@ export const reduceLifecycle = (
   const state = new Map<string, LifecycleState | "locked">(
     graph.nodes.map((node) => [node.id, "locked"]),
   );
-  for (const event of effectiveEvents(graph)) state.set(event.subjectId, event.requestedState);
+  for (const event of effectiveEvents(graph)) {
+    state.set(event.subjectId, event.requestedState);
+  }
   return state;
 };

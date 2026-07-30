@@ -1,5 +1,5 @@
 {
-  "canonicalDigest": "sha256:ba512b66a9c5fc85f2f64e3245b6d2427c8c58f19aa9d984886d23503b719228",
+  "canonicalDigest": "sha256:6b5e49508246f9f1d1ef8f827c1ca2587072fd633c5ea6f8aa27c896c9475fbe",
   "edgeKinds": [
     "requires"
   ],
@@ -8,6 +8,10 @@
       "dependsOn": [
         {
           "targetId": "design:lag-probe"
+        },
+        {
+          "optional": true,
+          "targetId": "exp:replay-harness"
         },
         {
           "targetId": "gate:0001-accept"

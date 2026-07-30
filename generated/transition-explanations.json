@@ -1,5 +1,5 @@
 {
-  "canonicalDigest": "sha256:ba512b66a9c5fc85f2f64e3245b6d2427c8c58f19aa9d984886d23503b719228",
+  "canonicalDigest": "sha256:6b5e49508246f9f1d1ef8f827c1ca2587072fd633c5ea6f8aa27c896c9475fbe",
   "derivationPolicy": {
     "policy": "workgraph.policy.roadmap-derivation",
     "policyVersion": "1"
@@ -42,13 +42,17 @@
       "value": "achieved"
     },
     {
-      "limitations": [],
+      "limitations": [
+        "Optional branches remain unsatisfied without locking this subject: exp:replay-harness."
+      ],
       "policy": "workgraph.policy.roadmap-derivation",
       "policyVersion": "1",
       "rulesFired": [
-        "rule.requires_satisfied"
+        "rule.requires_satisfied",
+        "rule.optional_branches_non_blocking"
       ],
       "sourceEdges": [
+        "edge:cap-lag-optional-replay",
         "edge:cap-lag-requires-design",
         "edge:cap-lag-requires-gate"
       ],
@@ -57,6 +61,7 @@
         "event:gate-achieved"
       ],
       "sourceNodes": [
+        "exp:replay-harness",
         "design:lag-probe",
         "gate:0001-accept"
       ],
@@ -180,7 +185,8 @@
     },
     {
       "limitations": [
-        "No transition history and no declared prerequisites."
+        "No transition history and no declared prerequisites.",
+        "Blocking explanation includes the blocker lifecycle and live contradiction observations; it does not infer causal facts beyond those graph relations."
       ],
       "policy": "workgraph.policy.roadmap-derivation",
       "policyVersion": "1",
@@ -189,10 +195,16 @@
         "rule.blocked_by_unresolved_node"
       ],
       "sourceEdges": [
-        "edge:assumption-blocks-replay"
+        "edge:assumption-blocks-replay",
+        "edge:incident-contradicts-assumption"
       ],
-      "sourceEvents": [],
+      "sourceEvents": [
+        "event:clock-skew-observed",
+        "event:risk-assumed"
+      ],
       "sourceNodes": [
+        "ev:clock-skew-incident",
+        "exp:replay-harness",
         "risk:steady-clock"
       ],
       "subjectId": "exp:replay-harness",
@@ -279,10 +291,12 @@
         "edge:incident-contradicts-assumption"
       ],
       "sourceEvents": [
+        "event:clock-skew-observed",
         "event:risk-assumed"
       ],
       "sourceNodes": [
-        "ev:clock-skew-incident"
+        "ev:clock-skew-incident",
+        "risk:steady-clock"
       ],
       "subjectId": "risk:steady-clock",
       "unsatisfiedPrerequisites": [],
@@ -325,6 +339,20 @@
       "value": "active"
     }
   ],
+  "effectiveEventIds": [
+    "event:rq-active",
+    "event:decision-adopted",
+    "event:risk-assumed",
+    "event:rq-achieved",
+    "event:session-active",
+    "event:exp-active",
+    "event:design-achieved",
+    "event:approval-recorded",
+    "event:exp-achieved",
+    "event:gate-achieved",
+    "event:report-registered",
+    "event:clock-skew-observed"
+  ],
   "events": [
     {
       "actor": "operator:frost",
@@ -337,12 +365,17 @@
           "mediaType": "text/markdown"
         }
       ],
+      "declaredEvidenceCategory": "agent_assertion",
       "evidenceCategory": "agent_assertion",
       "humanApprovedAssertion": false,
       "id": "event:rq-active",
       "machineChecked": false,
       "observedAt": "2026-07-28T09:00:00Z",
       "policy": "workgraph.policy.administrative",
+      "policyRulesFired": [
+        "rule.transition-policy.workgraph.policy.administrative@1",
+        "rule.authority-evidence.administrative_assertion->agent_assertion"
+      ],
       "policyVersion": "1",
       "priorState": null,
       "rationale": "Research opened; the note artifact records the framing.",
@@ -361,12 +394,17 @@
           "mediaType": "text/markdown"
         }
       ],
+      "declaredEvidenceCategory": "agent_assertion",
       "evidenceCategory": "agent_assertion",
       "humanApprovedAssertion": false,
       "id": "event:decision-adopted",
       "machineChecked": false,
       "observedAt": "2026-07-28T10:00:00Z",
       "policy": "workgraph.policy.administrative",
+      "policyRulesFired": [
+        "rule.transition-policy.workgraph.policy.administrative@1",
+        "rule.authority-evidence.administrative_assertion->agent_assertion"
+      ],
       "policyVersion": "1",
       "priorState": null,
       "rationale": "Decision recorded as an operator assertion, not a machine result.",
@@ -385,12 +423,17 @@
           "mediaType": "text/markdown"
         }
       ],
+      "declaredEvidenceCategory": "assumption",
       "evidenceCategory": "assumption",
       "humanApprovedAssertion": false,
       "id": "event:risk-assumed",
       "machineChecked": false,
       "observedAt": "2026-07-28T11:00:00Z",
-      "policy": "workgraph.policy.administrative",
+      "policy": "workgraph.policy.administrative-assumption",
+      "policyRulesFired": [
+        "rule.transition-policy.workgraph.policy.administrative-assumption@1",
+        "rule.authority-evidence.administrative_assertion->assumption"
+      ],
       "policyVersion": "1",
       "priorState": null,
       "rationale": "The steady-clock assumption is accepted as holding, explicitly as an assumption.",
@@ -409,12 +452,17 @@
           "mediaType": "text/markdown"
         }
       ],
+      "declaredEvidenceCategory": "agent_assertion",
       "evidenceCategory": "agent_assertion",
       "humanApprovedAssertion": false,
       "id": "event:rq-achieved",
       "machineChecked": false,
       "observedAt": "2026-07-28T17:00:00Z",
       "policy": "workgraph.policy.administrative",
+      "policyRulesFired": [
+        "rule.transition-policy.workgraph.policy.administrative@1",
+        "rule.authority-evidence.administrative_assertion->agent_assertion"
+      ],
       "policyVersion": "1",
       "priorState": "active",
       "rationale": "Research concluded; the summary artifact is an assertion, not a machine check.",
@@ -430,17 +478,23 @@
           "interpretation": "The provider reports a live session; this is an observation about the provider only.",
           "kind": "external_record",
           "observedAt": "2026-07-29T08:00:00Z",
+          "observedVersion": "42",
           "project": "orchard",
           "provider": "fictional-terminal-multiplexer",
           "recordId": "session/amber-7"
         }
       ],
+      "declaredEvidenceCategory": "external_observation",
       "evidenceCategory": "external_observation",
       "humanApprovedAssertion": false,
       "id": "event:session-active",
       "machineChecked": false,
       "observedAt": "2026-07-29T08:00:05Z",
       "policy": "workgraph.policy.imported-observation",
+      "policyRulesFired": [
+        "rule.transition-policy.workgraph.policy.imported-observation@1",
+        "rule.authority-evidence.imported_observation->external_observation"
+      ],
       "policyVersion": "1",
       "priorState": null,
       "rationale": "An external session record was observed; it asserts liveness, nothing more.",
@@ -463,17 +517,23 @@
           "interpretation": "The session record names this experiment as its working subject.",
           "kind": "external_record",
           "observedAt": "2026-07-29T08:10:00Z",
+          "observedVersion": "43",
           "project": "orchard",
           "provider": "fictional-terminal-multiplexer",
           "recordId": "session/amber-7"
         }
       ],
+      "declaredEvidenceCategory": "external_observation",
       "evidenceCategory": "external_observation",
       "humanApprovedAssertion": false,
       "id": "event:exp-active",
       "machineChecked": false,
       "observedAt": "2026-07-29T08:10:05Z",
       "policy": "workgraph.policy.imported-observation",
+      "policyRulesFired": [
+        "rule.transition-policy.workgraph.policy.imported-observation@1",
+        "rule.authority-evidence.imported_observation->external_observation"
+      ],
       "policyVersion": "1",
       "priorState": null,
       "rationale": "The observed session started work on the experiment's exact commit.",
@@ -504,12 +564,17 @@
           ]
         }
       ],
+      "declaredEvidenceCategory": "human_approved_assertion",
       "evidenceCategory": "human_approved_assertion",
       "humanApprovedAssertion": true,
       "id": "event:design-achieved",
       "machineChecked": false,
       "observedAt": "2026-07-29T10:00:05Z",
       "policy": "workgraph.policy.human-approval",
+      "policyRulesFired": [
+        "rule.transition-policy.workgraph.policy.human-approval@1",
+        "rule.authority-evidence.human_approval->human_approved_assertion"
+      ],
       "policyVersion": "1",
       "priorState": null,
       "rationale": "The operator approved the design freeze. This is a human-approved assertion and is not machine checked.",
@@ -540,12 +605,17 @@
           ]
         }
       ],
+      "declaredEvidenceCategory": "human_approved_assertion",
       "evidenceCategory": "human_approved_assertion",
       "humanApprovedAssertion": true,
       "id": "event:approval-recorded",
       "machineChecked": false,
       "observedAt": "2026-07-29T10:00:06Z",
       "policy": "workgraph.policy.human-approval",
+      "policyRulesFired": [
+        "rule.transition-policy.workgraph.policy.human-approval@1",
+        "rule.authority-evidence.human_approval->human_approved_assertion"
+      ],
       "policyVersion": "1",
       "priorState": null,
       "rationale": "The approval record itself is recorded as a human-approved assertion.",
@@ -578,12 +648,18 @@
           ]
         }
       ],
+      "declaredEvidenceCategory": "machine_check",
       "evidenceCategory": "machine_check",
       "humanApprovedAssertion": false,
       "id": "event:exp-achieved",
       "machineChecked": true,
       "observedAt": "2026-07-29T15:20:05Z",
-      "policy": "workgraph.policy.machine-check",
+      "policy": "orchard.policy.probe-acceptance",
+      "policyRulesFired": [
+        "rule.transition-policy.orchard.policy.probe-acceptance@1",
+        "rule.authority-evidence.machine_policy->machine_check",
+        "rule.acceptance-contract.orchard.policy.probe-acceptance/v1"
+      ],
       "policyVersion": "1",
       "priorState": "active",
       "rationale": "The bound probe check passed against the exact tracer commit.",
@@ -616,12 +692,18 @@
           ]
         }
       ],
+      "declaredEvidenceCategory": "machine_check",
       "evidenceCategory": "machine_check",
       "humanApprovedAssertion": false,
       "id": "event:gate-achieved",
       "machineChecked": true,
       "observedAt": "2026-07-29T16:05:05Z",
-      "policy": "workgraph.policy.machine-check",
+      "policy": "orchard.policy.gate-0001",
+      "policyRulesFired": [
+        "rule.transition-policy.orchard.policy.gate-0001@1",
+        "rule.authority-evidence.machine_policy->machine_check",
+        "rule.acceptance-contract.orchard.policy.gate-0001/v1"
+      ],
       "policyVersion": "1",
       "priorState": null,
       "rationale": "The acceptance gate's bound runner passed against the exact tracer commit.",
@@ -640,12 +722,17 @@
           "mediaType": "application/json"
         }
       ],
+      "declaredEvidenceCategory": "agent_assertion",
       "evidenceCategory": "agent_assertion",
       "humanApprovedAssertion": false,
       "id": "event:report-registered",
       "machineChecked": false,
       "observedAt": "2026-07-29T16:10:00Z",
       "policy": "workgraph.policy.administrative",
+      "policyRulesFired": [
+        "rule.transition-policy.workgraph.policy.administrative@1",
+        "rule.authority-evidence.administrative_assertion->agent_assertion"
+      ],
       "policyVersion": "1",
       "priorState": null,
       "rationale": "The report artifact is registered by digest; the digest is its identity.",
@@ -661,17 +748,23 @@
           "interpretation": "The monitor reports 40ms clock skew across hosts, contradicting the steady-clock assumption.",
           "kind": "external_record",
           "observedAt": "2026-07-30T02:00:00Z",
+          "observedVersion": "incident-revision-0001",
           "project": "orchard",
           "provider": "fictional-ops-monitor",
           "recordId": "incident/2026-07-30-clock-skew"
         }
       ],
+      "declaredEvidenceCategory": "external_observation",
       "evidenceCategory": "external_observation",
       "humanApprovedAssertion": false,
       "id": "event:clock-skew-observed",
       "machineChecked": false,
       "observedAt": "2026-07-30T02:00:05Z",
       "policy": "workgraph.policy.imported-observation",
+      "policyRulesFired": [
+        "rule.transition-policy.workgraph.policy.imported-observation@1",
+        "rule.authority-evidence.imported_observation->external_observation"
+      ],
       "policyVersion": "1",
       "priorState": null,
       "rationale": "A failing operational observation was imported. Earlier accepted history is preserved; a revision frontier is derived instead.",

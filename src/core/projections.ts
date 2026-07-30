@@ -1,6 +1,6 @@
 import type { BasisReference, TransitionEvent, WorkGraph } from "./model.ts";
 import type { Derivation, DerivedStatus } from "./derive.ts";
-import { validateGraph } from "./graph.ts";
+import { effectiveEvents, validateGraph, validatedTransitionEvidence } from "./graph.ts";
 import { stableStringify } from "./normalize.ts";
 
 export const PROJECTION_GENERATOR = "workgraph-tracer-0001-projector/1";
@@ -61,6 +61,7 @@ const basisSummary = (reference: BasisReference): Readonly<Record<string, unknow
         provider: reference.provider,
         project: reference.project,
         recordId: reference.recordId,
+        observedVersion: reference.observedVersion,
         observedAt: reference.observedAt,
         interpretation: reference.interpretation,
       };
@@ -81,32 +82,44 @@ const basisSummary = (reference: BasisReference): Readonly<Record<string, unknow
   }
 };
 
-const explainEvent = (event: TransitionEvent): Readonly<Record<string, unknown>> => ({
-  id: event.id,
-  subjectId: event.subjectId,
-  priorState: event.priorState,
-  requestedState: event.requestedState,
-  transitionKind: event.transitionKind,
-  actor: event.actor,
-  authority: event.authority,
-  evidenceCategory: event.evidenceCategory,
-  machineChecked: event.evidenceCategory === "machine_check",
-  humanApprovedAssertion: event.evidenceCategory === "human_approved_assertion",
-  policy: event.policy,
-  policyVersion: event.policyVersion,
-  rationale: event.rationale,
-  observedAt: event.observedAt,
-  basis: event.basis.map(basisSummary),
-  ...(event.supersedes === undefined ? {} : { supersedes: event.supersedes }),
-  ...(event.fulfillsRequest === undefined ? {} : { fulfillsRequest: event.fulfillsRequest }),
-});
+const explainEvent = (
+  graph: WorkGraph,
+  event: TransitionEvent,
+): Readonly<Record<string, unknown>> => {
+  const evidence = validatedTransitionEvidence(graph, event);
+  return {
+    id: event.id,
+    subjectId: event.subjectId,
+    priorState: event.priorState,
+    requestedState: event.requestedState,
+    transitionKind: event.transitionKind,
+    actor: event.actor,
+    authority: event.authority,
+    declaredEvidenceCategory: event.evidenceCategory,
+    evidenceCategory: evidence?.category ?? "invalid",
+    machineChecked: evidence?.machineChecked ?? false,
+    humanApprovedAssertion: evidence?.humanApprovedAssertion ?? false,
+    policy: event.policy,
+    policyVersion: event.policyVersion,
+    policyRulesFired: evidence?.rulesFired ?? [],
+    rationale: event.rationale,
+    observedAt: event.observedAt,
+    basis: event.basis.map(basisSummary),
+    ...(event.supersedes === undefined ? {} : { supersedes: event.supersedes }),
+    ...(event.fulfillsRequest === undefined ? {} : { fulfillsRequest: event.fulfillsRequest }),
+  };
+};
 
 interface ScheduleEntry {
   readonly subjectId: string;
   readonly title: string;
   readonly kind: string;
   readonly derivedValue: string;
-  readonly dependsOn: ReadonlyArray<{ readonly targetId: string; readonly orGroup?: string }>;
+  readonly dependsOn: ReadonlyArray<{
+    readonly targetId: string;
+    readonly orGroup?: string;
+    readonly optional?: true;
+  }>;
   readonly layer: number;
 }
 
@@ -115,6 +128,7 @@ const dependencySchedule = (
   statusById: ReadonlyMap<string, DerivedStatus>,
 ): { readonly ok: true; readonly entries: ReadonlyArray<ScheduleEntry> } | ProjectionFailure => {
   const requiresEdges = graph.edges.filter((edge) => edge.kind === "requires");
+  const schedulingEdges = requiresEdges.filter((edge) => edge.attributes?.["optional"] !== true);
   const participantIds = [
     ...new Set(requiresEdges.flatMap((edge) => [edge.from, edge.to])),
   ].toSorted(byCodeUnit);
@@ -124,7 +138,7 @@ const dependencySchedule = (
     if (trail.includes(id)) return undefined;
     const known = layers.get(id);
     if (known !== undefined) return known;
-    const dependencies = requiresEdges.filter((edge) => edge.from === id);
+    const dependencies = schedulingEdges.filter((edge) => edge.from === id);
     let layer = 0;
     for (const edge of dependencies) {
       const dependencyLayer = layerOf(edge.to, [...trail, id]);
@@ -156,6 +170,8 @@ const dependencySchedule = (
         .filter((edge) => edge.from === id)
         .map((edge) => {
           const orGroup = edge.attributes?.["orGroup"];
+          const optional = edge.attributes?.["optional"] === true;
+          if (optional) return { targetId: edge.to, optional: true as const };
           return typeof orGroup === "string"
             ? { targetId: edge.to, orGroup }
             : { targetId: edge.to };
@@ -189,7 +205,7 @@ const mermaidRoadmap = (
   const nodesById = new Map(graph.nodes.map((node) => [node.id, node]));
   const humanApprovedSubjects = new Set(
     graph.events
-      .filter((event) => event.evidenceCategory === "human_approved_assertion")
+      .filter((event) => validatedTransitionEvidence(graph, event)?.humanApprovedAssertion === true)
       .map((event) => event.subjectId),
   );
 
@@ -216,10 +232,13 @@ const mermaidRoadmap = (
   }
   for (const edge of requiresEdges.toSorted((a, b) => byCodeUnit(a.id, b.id))) {
     const orGroup = edge.attributes?.["orGroup"];
+    const optional = edge.attributes?.["optional"] === true;
     lines.push(
-      typeof orGroup === "string"
-        ? `  ${mermaidId(edge.from)} -. "requires (or: ${orGroup})" .-> ${mermaidId(edge.to)}`
-        : `  ${mermaidId(edge.from)} -- requires --> ${mermaidId(edge.to)}`,
+      optional
+        ? `  ${mermaidId(edge.from)} -. "optional branch (non-blocking)" .-> ${mermaidId(edge.to)}`
+        : typeof orGroup === "string"
+          ? `  ${mermaidId(edge.from)} -. "requires (or: ${orGroup})" .-> ${mermaidId(edge.to)}`
+          : `  ${mermaidId(edge.from)} -- requires --> ${mermaidId(edge.to)}`,
     );
   }
   for (const edge of graph.edges
@@ -249,7 +268,7 @@ const milestoneMarkdown = (
   const statusById = new Map(derivation.statuses.map((status) => [status.subjectId, status]));
   const nodesById = new Map(graph.nodes.map((node) => [node.id, node]));
   const achievingEvent = new Map<string, TransitionEvent>();
-  for (const event of graph.events) achievingEvent.set(event.subjectId, event);
+  for (const event of effectiveEvents(graph)) achievingEvent.set(event.subjectId, event);
 
   const lines: Array<string> = [
     "# Milestone status",
@@ -280,21 +299,22 @@ const milestoneMarkdown = (
       const node = nodesById.get(member.to);
       const memberStatus = statusById.get(member.to);
       const event = achievingEvent.get(member.to);
+      const evidence = event === undefined ? undefined : validatedTransitionEvidence(graph, event);
       // "machine-checked against its exact subject" is claimed only for
       // machine_policy authority, where the validator enforces that a passing
       // check itself names the subject's exact reference.
       const authorityNote =
         event === undefined
           ? "no canonical transition"
-          : event.evidenceCategory === "human_approved_assertion"
+          : evidence?.humanApprovedAssertion === true
             ? "human-approved assertion; machine_checked: false"
-            : event.evidenceCategory === "machine_check" && event.authority === "machine_policy"
+            : evidence?.machineChecked === true
               ? "machine-checked against its exact subject"
-              : `recorded as ${event.evidenceCategory}`;
+              : `recorded as ${evidence?.category ?? "invalid"}`;
       lines.push(
         `| ${node?.title ?? member.to} | ${node?.kind ?? "unknown"} | ${
           memberStatus?.value ?? "invalid"
-        } | ${event?.evidenceCategory ?? "none"} | ${authorityNote} |`,
+        } | ${evidence?.category ?? "none"} | ${authorityNote} |`,
       );
     }
     lines.push("");
@@ -386,7 +406,8 @@ export const projectAll = (
     canonicalDigest: `sha256:${canonicalDigest}`,
     generator: PROJECTION_GENERATOR,
     derivationPolicy: { policy: derivation.policy, policyVersion: derivation.policyVersion },
-    events: graph.events.map(explainEvent),
+    events: graph.events.map((event) => explainEvent(graph, event)),
+    effectiveEventIds: effectiveEvents(graph).map((event) => event.id),
     pendingRequests: graph.requests
       .filter((request) => !fulfilledRequestIds.has(request.id))
       .map((request) => ({
@@ -405,7 +426,16 @@ export const projectAll = (
   return {
     ok: true,
     files: [
-      { path: "normalized-graph.json", content: stableStringify(graph) },
+      {
+        path: "normalized-graph.json",
+        content: stableStringify({
+          canonicalDigest: `sha256:${canonicalDigest}`,
+          digestScope:
+            "sha256 of the deterministic canonicalGraph serialization; not a hash of this wrapper",
+          generator: PROJECTION_GENERATOR,
+          canonicalGraph: graph,
+        }),
+      },
       { path: "capability-roadmap.json", content: stableStringify(roadmap) },
       {
         path: "capability-roadmap.mmd",

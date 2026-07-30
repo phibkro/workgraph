@@ -1,12 +1,5 @@
-import type {
-  EvidenceCategory,
-  LifecycleState,
-  TransitionEvent,
-  WorkEdge,
-  WorkGraph,
-  WorkNode,
-} from "./model.ts";
-import { effectiveEvents, validateGraph } from "./graph.ts";
+import type { LifecycleState, TransitionEvent, WorkEdge, WorkGraph, WorkNode } from "./model.ts";
+import { effectiveEvents, validateGraph, validatedTransitionEvidence } from "./graph.ts";
 
 export const DERIVATION_POLICY = "workgraph.policy.roadmap-derivation";
 export const DERIVATION_POLICY_VERSION = "1";
@@ -53,6 +46,7 @@ export interface PrerequisiteReport {
   readonly subjectId: string;
   readonly andPrerequisites: ReadonlyArray<PrerequisiteAlternative>;
   readonly orGroups: ReadonlyArray<OrGroupReport>;
+  readonly optionalPrerequisites: ReadonlyArray<PrerequisiteAlternative>;
   readonly satisfied: boolean;
 }
 
@@ -105,6 +99,9 @@ interface LifecycleFact {
 const byCodeUnit = (left: string, right: string): number =>
   left < right ? -1 : left > right ? 1 : 0;
 
+const uniqueSorted = (values: ReadonlyArray<string>): ReadonlyArray<string> =>
+  [...new Set(values)].toSorted(byCodeUnit);
+
 const latestLifecycle = (graph: WorkGraph): ReadonlyMap<string, LifecycleFact> => {
   const facts = new Map<string, LifecycleFact>();
   for (const event of effectiveEvents(graph)) {
@@ -117,6 +114,8 @@ const orGroupOf = (edge: WorkEdge): string | undefined => {
   const value = edge.attributes?.["orGroup"];
   return typeof value === "string" ? value : undefined;
 };
+
+const isOptional = (edge: WorkEdge): boolean => edge.attributes?.["optional"] === true;
 
 export const deriveRoadmap = (graph: WorkGraph): Derivation => {
   const validation = validateGraph(graph);
@@ -145,12 +144,12 @@ export const deriveRoadmap = (graph: WorkGraph): Derivation => {
 
   interface BaseStatus {
     readonly value: DerivedValue;
-    readonly rulesFired: Array<string>;
-    readonly sourceNodes: Array<string>;
-    readonly sourceEdges: Array<string>;
-    readonly sourceEvents: Array<string>;
-    readonly unsatisfiedPrerequisites: Array<string>;
-    readonly limitations: Array<string>;
+    readonly rulesFired: ReadonlyArray<string>;
+    readonly sourceNodes: ReadonlyArray<string>;
+    readonly sourceEdges: ReadonlyArray<string>;
+    readonly sourceEvents: ReadonlyArray<string>;
+    readonly unsatisfiedPrerequisites: ReadonlyArray<string>;
+    readonly limitations: ReadonlyArray<string>;
   }
 
   /**
@@ -179,9 +178,11 @@ export const deriveRoadmap = (graph: WorkGraph): Derivation => {
   const prerequisiteReport = (subjectId: string): PrerequisiteReport => {
     const edges = requiresBySource.get(subjectId) ?? [];
     const isSatisfied = (edge: WorkEdge): boolean => lifecycle.get(edge.to)?.state === "achieved";
-    const andEdges = edges.filter((edge) => orGroupOf(edge) === undefined);
+    const optionalEdges = edges.filter(isOptional);
+    const requiredEdges = edges.filter((edge) => !isOptional(edge));
+    const andEdges = requiredEdges.filter((edge) => orGroupOf(edge) === undefined);
     const groupNames = [
-      ...new Set(edges.map(orGroupOf).filter((group) => group !== undefined)),
+      ...new Set(requiredEdges.map(orGroupOf).filter((group) => group !== undefined)),
     ].toSorted(byCodeUnit);
 
     const andPrerequisites = andEdges.map((edge) => ({
@@ -191,15 +192,21 @@ export const deriveRoadmap = (graph: WorkGraph): Derivation => {
     }));
     const orGroups = groupNames.map((group) => {
       const alternatives = edges
-        .filter((edge) => orGroupOf(edge) === group)
+        .filter((edge) => !isOptional(edge) && orGroupOf(edge) === group)
         .map((edge) => ({ targetId: edge.to, edgeId: edge.id, satisfied: isSatisfied(edge) }));
       return { group, alternatives, satisfied: alternatives.some((entry) => entry.satisfied) };
     });
+    const optionalPrerequisites = optionalEdges.map((edge) => ({
+      targetId: edge.to,
+      edgeId: edge.id,
+      satisfied: isSatisfied(edge),
+    }));
 
     return {
       subjectId,
       andPrerequisites,
       orGroups,
+      optionalPrerequisites,
       satisfied:
         andPrerequisites.every((entry) => entry.satisfied) &&
         orGroups.every((group) => group.satisfied),
@@ -235,12 +242,16 @@ export const deriveRoadmap = (graph: WorkGraph): Derivation => {
 
     if (fact !== undefined && fact.state !== "declared") {
       if (contradictions.length > 0 && fact.state !== "abandoned") {
+        const contradictionEvents = contradictions.flatMap((edge) => {
+          const contradictionFact = lifecycle.get(edge.from);
+          return contradictionFact === undefined ? [] : [contradictionFact.event.id];
+        });
         return {
           value: "stale",
           rulesFired: ["rule.event_lifecycle", "rule.contradicted_by_observation"],
-          sourceNodes: contradictions.map((edge) => edge.from),
+          sourceNodes: uniqueSorted([node.id, ...contradictions.map((edge) => edge.from)]),
           sourceEdges: contradictions.map((edge) => edge.id),
-          sourceEvents: [fact.event.id],
+          sourceEvents: uniqueSorted([fact.event.id, ...contradictionEvents]),
           unsatisfiedPrerequisites: [],
           limitations: [
             "Staleness marks a live contradiction; it does not erase the earlier accepted history.",
@@ -298,9 +309,15 @@ export const deriveRoadmap = (graph: WorkGraph): Derivation => {
     const report = prerequisitesById.get(node.id);
     if (report !== undefined) {
       if (report.satisfied) {
+        const optionalUnmet = report.optionalPrerequisites.filter((entry) => !entry.satisfied);
         return {
           value: "available",
-          rulesFired: ["rule.requires_satisfied"],
+          rulesFired: [
+            "rule.requires_satisfied",
+            ...(report.optionalPrerequisites.length === 0
+              ? []
+              : ["rule.optional_branches_non_blocking"]),
+          ],
           sourceNodes: (requiresBySource.get(node.id) ?? []).map((edge) => edge.to),
           sourceEdges: (requiresBySource.get(node.id) ?? []).map((edge) => edge.id),
           sourceEvents: (requiresBySource.get(node.id) ?? []).flatMap((edge) => {
@@ -308,7 +325,14 @@ export const deriveRoadmap = (graph: WorkGraph): Derivation => {
             return targetFact === undefined ? [] : [targetFact.event.id];
           }),
           unsatisfiedPrerequisites: [],
-          limitations: [],
+          limitations:
+            optionalUnmet.length === 0
+              ? []
+              : [
+                  `Optional branches remain unsatisfied without locking this subject: ${optionalUnmet
+                    .map((entry) => entry.targetId)
+                    .join(", ")}.`,
+                ],
         };
       }
       const unsatisfied = [
@@ -324,12 +348,20 @@ export const deriveRoadmap = (graph: WorkGraph): Derivation => {
       ];
       return {
         value: "locked",
-        rulesFired: ["rule.requires_unsatisfied"],
+        rulesFired: [
+          "rule.requires_unsatisfied",
+          ...(report.optionalPrerequisites.length === 0
+            ? []
+            : ["rule.optional_branches_non_blocking"]),
+        ],
         sourceNodes: (requiresBySource.get(node.id) ?? []).map((edge) => edge.to),
         sourceEdges: (requiresBySource.get(node.id) ?? []).map((edge) => edge.id),
         sourceEvents: [],
         unsatisfiedPrerequisites: unsatisfied,
-        limitations: [],
+        limitations:
+          report.optionalPrerequisites.length === 0
+            ? []
+            : ["Optional branches are reported but do not contribute to the locked state."],
       };
     }
 
@@ -353,17 +385,41 @@ export const deriveRoadmap = (graph: WorkGraph): Derivation => {
         (edge) => !blockerResolved(edge.from),
       );
       if (blockers.length > 0 && base.value !== "achieved" && base.value !== "invalid") {
+        const blockerContradictions = blockers.flatMap((edge) => activeContradictions(edge.from));
+        const blockerEvents = blockers.flatMap((edge) => {
+          const blockerFact = lifecycle.get(edge.from);
+          return blockerFact === undefined ? [] : [blockerFact.event.id];
+        });
+        const contradictionEvents = blockerContradictions.flatMap((edge) => {
+          const contradictionFact = lifecycle.get(edge.from);
+          return contradictionFact === undefined ? [] : [contradictionFact.event.id];
+        });
         return {
           subjectId: node.id,
           value: "blocked",
           policy: DERIVATION_POLICY,
           policyVersion: DERIVATION_POLICY_VERSION,
           rulesFired: [...base.rulesFired, "rule.blocked_by_unresolved_node"],
-          sourceNodes: blockers.map((edge) => edge.from),
-          sourceEdges: blockers.map((edge) => edge.id),
-          sourceEvents: base.sourceEvents,
+          sourceNodes: uniqueSorted([
+            ...base.sourceNodes,
+            ...blockers.map((edge) => edge.from),
+            ...blockerContradictions.map((edge) => edge.from),
+          ]),
+          sourceEdges: uniqueSorted([
+            ...base.sourceEdges,
+            ...blockers.map((edge) => edge.id),
+            ...blockerContradictions.map((edge) => edge.id),
+          ]),
+          sourceEvents: uniqueSorted([
+            ...base.sourceEvents,
+            ...blockerEvents,
+            ...contradictionEvents,
+          ]),
           unsatisfiedPrerequisites: blockers.map((edge) => `blocked by ${edge.from}`),
-          limitations: base.limitations,
+          limitations: [
+            ...base.limitations,
+            "Blocking explanation includes the blocker lifecycle and live contradiction observations; it does not infer causal facts beyond those graph relations.",
+          ],
         };
       }
       return {
@@ -426,8 +482,10 @@ export const deriveRoadmap = (graph: WorkGraph): Derivation => {
     }
 
     const machineCheckedTargets = targetOfKind(["acceptance_gate", "work_item"]).filter((edge) => {
-      const category: EvidenceCategory | undefined = lifecycle.get(edge.to)?.event.evidenceCategory;
-      return category === "machine_check";
+      const event = lifecycle.get(edge.to)?.event;
+      return event === undefined
+        ? false
+        : validatedTransitionEvidence(graph, event)?.machineChecked === true;
     });
     if (machineCheckedTargets.length > 0) {
       satisfied.push({
@@ -452,7 +510,7 @@ export const deriveRoadmap = (graph: WorkGraph): Derivation => {
           edge.kind === "supports" &&
           edge.to === capability.id &&
           nodesById.get(edge.from)?.kind === "evidence" &&
-          nodesById.get(edge.from)?.attributes?.["category"] === category &&
+          nodesById.get(edge.from)?.evidenceRole === category &&
           lifecycle.get(edge.from)?.state === "achieved",
       );
       if (edges.length === 0) return undefined;

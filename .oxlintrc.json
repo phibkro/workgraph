@@ -22,6 +22,49 @@
         "typescript/no-explicit-any": "off",
         "unicorn/consistent-function-scoping": "off"
       }
+    },
+    {
+      "files": ["src/core/**/*.ts"],
+      "rules": {
+        "no-restricted-globals": [
+          "error",
+          {
+            "checkGlobalObject": true,
+            "globals": [
+              "Bun",
+              "Buffer",
+              "Date",
+              "Deno",
+              "EventSource",
+              "WebSocket",
+              "XMLHttpRequest",
+              "crypto",
+              "document",
+              "fetch",
+              "globalThis",
+              "localStorage",
+              "navigator",
+              "performance",
+              "process",
+              "queueMicrotask",
+              "self",
+              "sessionStorage",
+              "setImmediate",
+              "setInterval",
+              "setTimeout",
+              "window"
+            ]
+          }
+        ],
+        "no-restricted-properties": [
+          "error",
+          {
+            "object": "Math",
+            "property": "random",
+            "message": "Portable core receives nondeterminism through an injected boundary."
+          }
+        ]
+      }
     }
   ]
 }
