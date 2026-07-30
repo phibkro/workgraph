@@ -6,6 +6,8 @@ import { reduceLifecycle, validateGraph } from "../src/core/graph.ts";
 import type { GitCommitReference, TransitionEvent, WorkGraph } from "../src/core/model.ts";
 import { normalizeGraph } from "../src/core/normalize.ts";
 import { projectAll } from "../src/core/projections.ts";
+import { portableImportViolations } from "../scripts/portable-import-policy.ts";
+import { unsupportedClaimFindings } from "../src/acceptance/claims.ts";
 import { acceptanceEvidence } from "../src/acceptance/manifest.ts";
 import { buildViews, JourneyFailure, runCli, webCryptoSha256 } from "../src/cli/journey.ts";
 import { fixtureCommit, tracerFixture } from "../src/fixture/tracer-0001.ts";
@@ -78,11 +80,40 @@ describe("acceptance for design spec 0001", () => {
   test("item 4: a check bound to commit A cannot unlock the artifact from commit B", () => {
     const swapped = clone(tracerFixture);
     const expNode = swapped.nodes.find((node) => node.id === "exp:lag-probe")!;
-    (expNode as { exactSubject: GitCommitReference }).exactSubject = {
-      ...fixtureCommit,
-      objectId: "b".repeat(40),
-    };
+    const commitB: GitCommitReference = { ...fixtureCommit, objectId: "b".repeat(40) };
+    (expNode as { exactSubject: GitCommitReference }).exactSubject = commitB;
     expect(issueCodes(swapped)).toContain("exact_subject_mismatch");
+
+    // Basis padding: a passing check for commit A plus a bare reference to
+    // commit B must not unlock a node whose exact subject is commit B. The
+    // bare reference satisfies the generic subject match, so only conjoint
+    // validation (the passing check itself naming the subject) rejects it.
+    const padded = clone(tracerFixture);
+    const paddedNode = padded.nodes.find((node) => node.id === "exp:lag-probe")!;
+    (paddedNode as { exactSubject: GitCommitReference }).exactSubject = commitB;
+    const paddedEvent = padded.events.find((event) => event.id === "event:exp-achieved")!;
+    (paddedEvent as { basis: unknown }).basis = [paddedEvent.basis[0], commitB];
+    const codes = issueCodes(padded);
+    expect(codes).toContain("machine_check_not_bound_to_subject");
+    expect(validateGraph(normalizeGraph(padded)).accepted).toBeFalse();
+
+    // The same conjoint rule applies to human approvals: an approval about a
+    // different artifact cannot advance a node even when the node's exact
+    // reference is padded into the basis alongside it.
+    const paddedApproval = clone(tracerFixture);
+    const designNode = paddedApproval.nodes.find((node) => node.id === "design:lag-probe")!;
+    const otherArtifact = {
+      kind: "artifact" as const,
+      algorithm: "sha256" as const,
+      digest: "cd".repeat(32),
+      mediaType: "text/markdown",
+    };
+    (designNode as { exactSubject: unknown }).exactSubject = otherArtifact;
+    const approvalEvent = paddedApproval.events.find(
+      (event) => event.id === "event:design-achieved",
+    )!;
+    (approvalEvent as { basis: unknown }).basis = [approvalEvent.basis[0], otherArtifact];
+    expect(issueCodes(paddedApproval)).toContain("human_approval_not_bound_to_subject");
   });
 
   test("item 5: a human-approved transition stays a human-approved assertion in every view", () => {
@@ -215,6 +246,44 @@ describe("acceptance for design spec 0001", () => {
       { ...correction, basis: [correction.basis[1]!, correction.basis[1]!] as never },
     ]);
     expect(issueCodes(unreferenced)).toContain("supersession_without_event_basis");
+
+    // Correcting a NON-latest event must not overwrite later uncorrected
+    // state: the correction replays at the corrected event's historical
+    // position. rq:lag-attribution went active (event:rq-active) then
+    // achieved (event:rq-achieved); correcting the activation must leave the
+    // later achievement in force.
+    const earlyCorrection: TransitionEvent = {
+      id: "event:rq-active-corrected",
+      subjectId: "rq:lag-attribution",
+      priorState: null,
+      requestedState: "active",
+      transitionKind: "correct",
+      actor: "operator:frost",
+      authority: "administrative_assertion",
+      evidenceCategory: "agent_assertion",
+      basis: [
+        { kind: "graph_event", eventId: "event:rq-active" },
+        {
+          kind: "artifact",
+          algorithm: "sha256",
+          digest: "2b".repeat(32),
+          mediaType: "text/markdown",
+        },
+      ],
+      policy: "workgraph.policy.administrative",
+      policyVersion: "1",
+      rationale: "The activation record named the wrong actor; the activation itself stands.",
+      observedAt: "2026-07-30T06:00:00Z",
+      supersedes: "event:rq-active",
+    };
+    const earlyCorrected = withEvents(clone(tracerFixture), (events) => [
+      ...events,
+      earlyCorrection,
+    ]);
+    const earlyNormalized = normalizeGraph(earlyCorrected);
+    expect(validateGraph(earlyNormalized).accepted).toBeTrue();
+    expect(reduceLifecycle(earlyNormalized).get("rq:lag-attribution")).toBe("achieved");
+    expect(derivedValueOf(earlyCorrected, "rq:lag-attribution")).toBe("achieved");
   });
 
   test("item 9: the canonical graph accepts the fixture's legal feedback cycle", () => {
@@ -313,7 +382,18 @@ describe("acceptance for design spec 0001", () => {
     );
     expect(derivedValueOf(withoutProbe, "cap:replay-validation")).toBe("locked");
 
-    const alternativePath = withEvents(withoutProbe, (events) => [
+    // The alternative path is realized at its own exact commit; the node
+    // declares it so the machine check can bind conjointly.
+    const replayCommit: GitCommitReference = { ...fixtureCommit, objectId: "d".repeat(40) };
+    const withBoundReplay: WorkGraph = {
+      ...withoutProbe,
+      nodes: withoutProbe.nodes.map((node) =>
+        node.id === "exp:replay-harness"
+          ? Object.assign(structuredClone(node), { exactSubject: replayCommit })
+          : node,
+      ),
+    };
+    const alternativePath = withEvents(withBoundReplay, (events) => [
       ...events,
       {
         id: "event:replay-achieved",
@@ -396,20 +476,97 @@ describe("acceptance for design spec 0001", () => {
   });
 
   test("item 17: no unsupported claim vocabulary appears in any projection", () => {
-    const forbidden = [
-      "formally proven",
-      "proven correct",
-      "guaranteed",
-      "tamper-proof",
-      "operationally suitable",
-      "cryptographically verified",
-    ];
     for (const file of builtViews.files) {
-      const lowered = file.content.toLowerCase();
-      for (const phrase of forbidden) {
-        expect(lowered.includes(phrase)).toBeFalse();
-      }
+      expect({ path: file.path, findings: unsupportedClaimFindings(file.content) }).toEqual({
+        path: file.path,
+        findings: [],
+      });
     }
+  });
+
+  test("item 17: the shared claim vocabulary catches variations, not only exact phrases", () => {
+    const caught = [
+      "This result is Proven.",
+      "provably correct output",
+      "the pipeline is formally verified",
+      "delivery is guaranteed",
+      "a tamper proof ledger",
+      "judged production-ready",
+      "operationally suitable for use",
+      "the actor was authenticated",
+      "certified by the runner",
+      "independently verified results",
+    ];
+    for (const claim of caught) {
+      expect({ claim, findings: unsupportedClaimFindings(claim) }).not.toEqual({
+        claim,
+        findings: [],
+      });
+    }
+    const allowed = [
+      "authentication: unverified",
+      "human_approved_assertion with machine_checked: false",
+      "maturity: independently_reviewed",
+      "the provider_authenticated flag was not set",
+    ];
+    for (const text of allowed) {
+      expect({ text, findings: unsupportedClaimFindings(text) }).toEqual({ text, findings: [] });
+    }
+  });
+
+  test("blocks resolve from the blocker's lifecycle: abandoned blockers stop blocking", () => {
+    // Baseline: the achieved-but-contradicted assumption still blocks.
+    expect(derivedValueOf(tracerFixture, "exp:replay-harness")).toBe("blocked");
+
+    const abandoned = withEvents(clone(tracerFixture), (events) => [
+      ...events,
+      {
+        id: "event:risk-abandoned",
+        subjectId: "risk:steady-clock",
+        priorState: "achieved",
+        requestedState: "abandoned" as const,
+        transitionKind: "advance" as const,
+        actor: "operator:frost",
+        authority: "administrative_assertion" as const,
+        evidenceCategory: "agent_assertion" as const,
+        basis: [
+          {
+            kind: "artifact" as const,
+            algorithm: "sha256" as const,
+            digest: "5e".repeat(32),
+            mediaType: "text/markdown",
+          },
+        ] as const,
+        policy: "workgraph.policy.administrative",
+        policyVersion: "1",
+        rationale: "The steady-clock assumption is withdrawn after the skew incident.",
+        observedAt: "2026-07-30T07:00:00Z",
+      },
+    ]);
+    expect(derivedValueOf(abandoned, "risk:steady-clock")).toBe("stale");
+    expect(derivedValueOf(abandoned, "exp:replay-harness")).not.toBe("blocked");
+  });
+
+  test("the portable-core import gate is an allowlist, not a denylist", () => {
+    const violating = [
+      "fs",
+      "child_process",
+      "http",
+      "node:fs",
+      "bun:test",
+      "effect",
+      "@effect/platform-bun",
+      "left-pad",
+      "../fixture/tracer-0001.ts",
+      "../../scripts/check.ts",
+    ];
+    for (const specifier of violating) {
+      expect(portableImportViolations("src/core/graph.ts", [specifier])).not.toEqual([]);
+    }
+    expect(
+      portableImportViolations("src/core/graph.ts", ["./model.ts", "./references.ts"]),
+    ).toEqual([]);
+    expect(portableImportViolations("src/core/nested/deep.ts", ["../model.ts"])).toEqual([]);
   });
 
   test("the evidence manifest covers items 1 through 17 exactly once", () => {
