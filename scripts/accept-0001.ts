@@ -68,7 +68,11 @@ const requireRealNode = Effect.gen(function* () {
   yield* requireTool("node");
   const probe = yield* Effect.promise(async () => {
     const child = Bun.spawn(
-      ["node", "-e", "process.stdout.write(typeof Bun === 'undefined' ? process.version : 'bun-shim')"],
+      [
+        "node",
+        "-e",
+        "process.stdout.write(typeof Bun === 'undefined' ? process.version : 'bun-shim')",
+      ],
       { cwd: projectRoot, stdout: "pipe", stderr: "inherit" },
     );
     const output = await new Response(child.stdout).text();
