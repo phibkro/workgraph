@@ -166,6 +166,19 @@ export const validateGraph = (graph: WorkGraph): ValidationResult => {
   for (const id of duplicates(graph.events.map((event) => event.id))) {
     issues.push({ code: "duplicate_event", subject: id, detail: `Duplicate event ${id}.` });
   }
+  for (const id of duplicates(graph.requests.map((request) => request.id))) {
+    issues.push({ code: "duplicate_request", subject: id, detail: `Duplicate request ${id}.` });
+  }
+
+  for (const request of graph.requests) {
+    if (!nodes.has(request.subjectId)) {
+      issues.push({
+        code: "missing_request_subject",
+        subject: request.id,
+        detail: `Request ${request.id} references missing subject ${request.subjectId}.`,
+      });
+    }
+  }
 
   for (const edge of graph.edges) {
     if (!nodes.has(edge.from) || !nodes.has(edge.to)) {
@@ -227,6 +240,29 @@ export const validateGraph = (graph: WorkGraph): ValidationResult => {
           code: "supersession_without_event_basis",
           subject: event.id,
           detail: "A correction must cite the superseded graph event.",
+        });
+      }
+    }
+
+    if (event.fulfillsRequest !== undefined) {
+      const request = graph.requests.find((candidate) => candidate.id === event.fulfillsRequest);
+      if (
+        request === undefined ||
+        request.subjectId !== event.subjectId ||
+        request.requestedState !== event.requestedState
+      ) {
+        issues.push({
+          code: "invalid_request_fulfillment",
+          subject: event.id,
+          detail: "A fulfilling event must match an existing request's subject and state.",
+        });
+      }
+      if (!event.basis.some((reference) => reference.kind === "git_commit")) {
+        issues.push({
+          code: "request_fulfillment_without_commit",
+          subject: event.id,
+          detail:
+            "Fulfilling a commit-declared request requires observing the immutable resulting commit.",
         });
       }
     }

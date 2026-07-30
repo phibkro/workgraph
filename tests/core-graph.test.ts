@@ -65,6 +65,7 @@ const graph = (overrides: Partial<WorkGraph> = {}): WorkGraph => ({
   ],
   edges: [],
   events: [transition()],
+  requests: [],
   ...overrides,
 });
 

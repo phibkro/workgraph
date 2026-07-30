@@ -162,6 +162,24 @@ export interface TransitionEvent {
   readonly rationale: string;
   readonly observedAt: string;
   readonly supersedes?: string;
+  readonly fulfillsRequest?: string;
+}
+
+/**
+ * A transition request authored inside a commit. The authoring commit cannot
+ * know its own future object ID, so a request carries stable subject and work
+ * identities only. Requests live outside the event history: the lifecycle
+ * reducer reads events exclusively, so a request can never change state until
+ * a separate observer emits a canonical event referencing the immutable
+ * resulting commit.
+ */
+export interface TransitionRequest {
+  readonly id: string;
+  readonly subjectId: string;
+  readonly requestedState: LifecycleState;
+  readonly declaredBy: string;
+  readonly declaredInRepository: string;
+  readonly rationale: string;
 }
 
 export interface WorkGraph {
@@ -169,4 +187,5 @@ export interface WorkGraph {
   readonly nodes: ReadonlyArray<WorkNode>;
   readonly edges: ReadonlyArray<WorkEdge>;
   readonly events: ReadonlyArray<TransitionEvent>;
+  readonly requests: ReadonlyArray<TransitionRequest>;
 }
