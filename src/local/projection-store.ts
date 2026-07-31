@@ -56,6 +56,7 @@ export interface BuiltLocalProjection {
 export interface ProjectionBuildFailure {
   readonly _tag: "ProjectionBuildRejected";
   readonly code:
+    | "invalid_projection_input"
     | "source_coherence_rejected"
     | "source_identity_mismatch"
     | "policy_registry_rejected"
@@ -257,5 +258,13 @@ const buildAuthenticated = (
  * This function performs no filesystem effect. It reauthenticates the source
  * document, source identity, and policy registry before it derives any output.
  */
-export const buildLocalProjection = (inspected: InspectedLocalDocument): ProjectionBuildOutcome =>
-  buildAuthenticated(inspected.document, inspected.identity, inspected.policyRegistry);
+export const buildLocalProjection = (inspected: InspectedLocalDocument): ProjectionBuildOutcome => {
+  try {
+    return buildAuthenticated(inspected.document, inspected.identity, inspected.policyRegistry);
+  } catch {
+    return rejected(
+      "invalid_projection_input",
+      "The projection input could not be observed as an accepted inspection.",
+    );
+  }
+};

@@ -204,3 +204,38 @@ test("projection build reauthenticates source identity and policy registry", () 
     assert.equal(incoherent.failure.code, "source_coherence_rejected");
   }
 });
+
+test("hostile projection inputs become typed rejections instead of defects", () => {
+  const hostile = new Proxy(
+    {},
+    {
+      get() {
+        throw new Error("hostile read");
+      },
+    },
+  );
+  assert.deepEqual(buildLocalProjection(hostile as InspectedLocalDocument), {
+    ok: false,
+    failure: {
+      _tag: "ProjectionBuildRejected",
+      code: "invalid_projection_input",
+      detail: "The projection input could not be observed as an accepted inspection.",
+    },
+  });
+
+  const document = createGenesisDocument(graph(), sha256Text);
+  const coherence = validateDocumentCoherence(document, sha256Text);
+  assert.notEqual(coherence.identity, undefined);
+  const nestedHostile = inspected(document, coherence.identity!);
+  Object.defineProperty(nestedHostile, "document", {
+    enumerable: true,
+    get() {
+      throw new Error("hostile document read");
+    },
+  });
+  const outcome = buildLocalProjection(nestedHostile);
+  assert.equal(outcome.ok, false);
+  if (!outcome.ok) {
+    assert.equal(outcome.failure.code, "invalid_projection_input");
+  }
+});
