@@ -44,6 +44,7 @@ const run = (section: string, command: ReadonlyArray<string>) =>
 const requiredImplementation = [
   "src/core/policy-registry.ts",
   "src/core/local-command.ts",
+  "src/fixture/policy-registry-0001.ts",
   "src/local/document-codec.ts",
   "src/local/store.ts",
   "src/local/bun-file-store.ts",

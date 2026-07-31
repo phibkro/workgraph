@@ -1,10 +1,26 @@
 # Plan 0002: local command loop
 
-Status: contract frozen, implementation not present
+Status: recut contract frozen, implementation not present
 
 Frozen base: `ba9fecdd56a3a0b592604e79b55715363e6ee5f3`
 
 Contract: `design-specs/0002-local-command-loop.md`
+
+## Independent contract review
+
+Reviewed head: `24a8e3a243a414f46dc5279c3723ea6bd7bd19b7`
+
+Verdict: `CHANGES_REQUIRED`
+
+The review found four blocking gaps:
+
+1. The policy registry digest did not define a complete normalized registry.
+2. The path model did not retain an enforceable directory capability.
+3. Pre-rename store failures did not have a total public outcome.
+4. Receipts did not form a reconstructable chain from deterministic genesis.
+
+This recut resolves each gap in the frozen contract. The review verdict remains
+an observation about the rejected head. It is not an acceptance of this recut.
 
 ## Product dependency
 
@@ -38,10 +54,12 @@ The Control Room adapter requires both products. It is not part of 0002.
 ### Slice 1: portable decisions
 
 - Add an explicit immutable policy registry.
-- Preserve the 0001 fixture registry as a composition value.
+- Normalize and digest generic built-ins plus optional data definitions.
+- Move Orchard rules from the module-global map to an explicit fixture value.
 - Add local document, identity, receipt, and command types.
+- Add deterministic genesis and coherent receipt-chain validation.
 - Add the pure append decision.
-- Add prefix, correction, conflict, and idempotency tests.
+- Add prefix, correction, registry conflict, and idempotency tests.
 
 ### Slice 2: decode and identify
 
@@ -54,9 +72,10 @@ The Control Room adapter requires both products. It is not part of 0002.
 
 - Add the Effect store service.
 - Add Bun and Node live layers.
+- Add Linux retained-directory-handle custody.
 - Add lock, temporary-file, sync, rename, and read-back handling.
-- Add fault-injected conflict and unknown-outcome tests.
-- Add path, link, and cleanup adversaries.
+- Add total pre-rename and unknown post-rename outcomes.
+- Add ancestor-swap, link, command-file, and cleanup adversaries.
 
 ### Slice 4: product surfaces
 
@@ -79,15 +98,19 @@ The Control Room adapter requires both products. It is not part of 0002.
 The implementation owns only the modules and deliverables named in the design
 spec. It must not import Semantic Systems or add a Control Room adapter.
 
-The implementation must not revise 0001 fixture semantics. If a registry
-refactor changes generated 0001 bytes, stop and report the incompatibility.
+The implementation can change 0001 composition call sites to pass the fixture
+registry. It must not revise 0001 fixture semantics.
+
+If a registry refactor changes generated 0001 bytes, stop and report the
+incompatibility.
 
 ## Review checkpoints
 
-1. Review the pure registry and append decision before filesystem work.
-2. Review the write-custody state machine before a live adapter runs.
-3. Review all fault outcomes before CLI integration.
-4. Run an independent exact-head review before integration.
+1. Review registry normalization and receipt coherence before store work.
+2. Review the pure append decision before filesystem work.
+3. Review Linux handle-relative custody before a live adapter runs.
+4. Review every pre-rename fault outcome before CLI integration.
+5. Run an independent exact-head review before integration.
 
 ## Deferred decisions
 
