@@ -26,6 +26,7 @@ export interface ProjectionManifest {
   readonly schemaVersion: "workgraph.projection-manifest/v1alpha1";
   readonly generator: typeof LOCAL_PROJECTION_GENERATOR;
   readonly sourceIdentity: GraphIdentity;
+  readonly policyRegistryDigest: `sha256:${string}`;
   readonly files: ReadonlyArray<{
     readonly basename: string;
     readonly digest: `sha256:${string}`;
@@ -89,6 +90,7 @@ const equalIdentity = (left: GraphIdentity, right: GraphIdentity): boolean =>
 const bindJsonProjection = (
   file: ProjectionFile,
   sourceIdentity: GraphIdentity,
+  policyRegistryDigest: `sha256:${string}`,
 ): ProjectionFile | ProjectionBuildFailure => {
   try {
     const parsed: unknown = JSON.parse(file.content);
@@ -104,6 +106,7 @@ const bindJsonProjection = (
       content: stableStringify({
         ...(parsed as Readonly<Record<string, unknown>>),
         graphDigest: sourceIdentity.graphDigest,
+        policyRegistryDigest,
         revision: sourceIdentity.revision,
       }),
     };
@@ -119,26 +122,28 @@ const bindJsonProjection = (
 const bindTextProjection = (
   file: ProjectionFile,
   sourceIdentity: GraphIdentity,
+  policyRegistryDigest: `sha256:${string}`,
 ): ProjectionFile => {
   if (file.path.endsWith(".mmd")) {
     return {
       path: file.path,
-      content: `%% graphDigest: ${sourceIdentity.graphDigest}\n%% revision: ${sourceIdentity.revision}\n${file.content}`,
+      content: `%% graphDigest: ${sourceIdentity.graphDigest}\n%% policyRegistryDigest: ${policyRegistryDigest}\n%% revision: ${sourceIdentity.revision}\n${file.content}`,
     };
   }
   return {
     path: file.path,
-    content: `<!-- graphDigest: ${sourceIdentity.graphDigest} -->\n<!-- revision: ${sourceIdentity.revision} -->\n${file.content}`,
+    content: `<!-- graphDigest: ${sourceIdentity.graphDigest} -->\n<!-- policyRegistryDigest: ${policyRegistryDigest} -->\n<!-- revision: ${sourceIdentity.revision} -->\n${file.content}`,
   };
 };
 
 const bindProjection = (
   file: ProjectionFile,
   sourceIdentity: GraphIdentity,
+  policyRegistryDigest: `sha256:${string}`,
 ): ProjectionFile | ProjectionBuildFailure =>
   file.path.endsWith(".json")
-    ? bindJsonProjection(file, sourceIdentity)
-    : bindTextProjection(file, sourceIdentity);
+    ? bindJsonProjection(file, sourceIdentity, policyRegistryDigest)
+    : bindTextProjection(file, sourceIdentity, policyRegistryDigest);
 
 const buildAuthenticated = (
   document: LocalWorkGraphDocument,
@@ -189,7 +194,7 @@ const buildAuthenticated = (
         `The projector returned an unsafe or reserved path: ${projectedFile.path}`,
       );
     }
-    const bound = bindProjection(projectedFile, sourceIdentity);
+    const bound = bindProjection(projectedFile, sourceIdentity, policyRegistry.digest);
     if ("code" in bound) {
       return { ok: false, failure: immutableSnapshot(bound) };
     }
@@ -209,6 +214,7 @@ const buildAuthenticated = (
     schemaVersion: "workgraph.projection-manifest/v1alpha1",
     generator: LOCAL_PROJECTION_GENERATOR,
     sourceIdentity,
+    policyRegistryDigest: policyRegistry.digest,
     files: files.map(({ basename, digest }) => ({ basename, digest })),
   };
   const manifestContent = stableStringify(manifestValue);

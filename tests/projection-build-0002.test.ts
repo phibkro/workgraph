@@ -77,11 +77,11 @@ test("projection build is deterministic and every file carries source identity",
   assert.equal(first.manifest.digest, first.treeDigest);
   assert.equal(
     first.treeDigest,
-    "sha256:5651a2e2b7e2edd92a4c35c99ae57c2fa486cc9dd3c1070de02607ea2bc0c511",
+    "sha256:ca97cfefe347474417f2d0a31e04f750bd09d8ce6b8858f65f2d6a632d9aaae5",
   );
   assert.equal(
     sha256Text(first.pointerBytes),
-    "sha256:85fae556fd25b343f7bf62dedbd0f5f82076d673479694f05f9982fe5bb23447",
+    "sha256:eceafa7e6307c35ad0d2f3d38e0481f01b0923e8a86b860d5bf122d7150413df",
   );
   assert.match(
     first.snapshotBasename,
@@ -93,9 +93,11 @@ test("projection build is deterministic and every file carries source identity",
     if (file.basename.endsWith(".json")) {
       const value = JSON.parse(file.content);
       assert.equal(value.graphDigest, document.graphDigest);
+      assert.equal(value.policyRegistryDigest, registry.digest);
       assert.equal(value.revision, 0);
     } else {
       assert.match(file.content, new RegExp(document.graphDigest, "u"));
+      assert.match(file.content, new RegExp(registry.digest, "u"));
       assert.match(file.content, /revision: 0/u);
     }
   }
@@ -105,6 +107,7 @@ test("manifest binds every sorted file and excludes itself", () => {
   const projection = acceptedBuild(createGenesisDocument(graph(), sha256Text));
   const manifest = JSON.parse(projection.manifest.content) as {
     readonly sourceIdentity: GraphIdentity;
+    readonly policyRegistryDigest: string;
     readonly files: ReadonlyArray<{ readonly basename: string; readonly digest: string }>;
   };
   assert.deepEqual(
@@ -116,6 +119,7 @@ test("manifest binds every sorted file and excludes itself", () => {
     false,
   );
   assert.deepEqual(manifest.sourceIdentity, projection.sourceIdentity);
+  assert.equal(manifest.policyRegistryDigest, registry.digest);
 });
 
 test("a source change produces a different graph, tree, snapshot, and pointer identity", () => {
@@ -130,6 +134,31 @@ test("a source change produces a different graph, tree, snapshot, and pointer id
   assert.notEqual(first.treeDigest, second.treeDigest);
   assert.notEqual(first.snapshotBasename, second.snapshotBasename);
   assert.notEqual(first.pointerBytes, second.pointerBytes);
+});
+
+test("an unused policy definition still changes the projection receipt identity", () => {
+  const document = createGenesisDocument(graph(), sha256Text);
+  const base = acceptedBuild(document);
+  const coherence = validateDocumentCoherence(document, sha256Text);
+  assert.notEqual(coherence.identity, undefined);
+  const extendedResolution = resolvePolicyRegistry([
+    {
+      id: "example.unused-policy",
+      version: "1",
+      authority: "administrative_assertion",
+      evidenceCategory: "agent_assertion",
+      rules: [{ priorState: null, requestedState: "active", transitionKind: "advance" }],
+    },
+  ]);
+  assert.equal(extendedResolution.ok, true);
+  if (!extendedResolution.ok) throw new Error("extended policy registry rejected");
+  const extendedRegistry = attachPolicyRegistryDigest(extendedResolution, sha256Text);
+  const outcome = buildLocalProjection(inspected(document, coherence.identity!, extendedRegistry));
+  if (!outcome.ok) throw new Error(outcome.failure.detail);
+
+  assert.equal(base.sourceIdentity.graphDigest, outcome.projection.sourceIdentity.graphDigest);
+  assert.notEqual(base.treeDigest, outcome.projection.treeDigest);
+  assert.notEqual(base.pointerBytes, outcome.projection.pointerBytes);
 });
 
 test("projection build reauthenticates source identity and policy registry", () => {
