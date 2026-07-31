@@ -28,6 +28,8 @@ import {
   encodeLocalDocument,
   sha256Text,
 } from "../src/local/document-codec.ts";
+import { decodeSafeBasename, makeLocalFileStore } from "../src/local/store.ts";
+import { Effect } from "effect";
 
 const graph = (events: ReadonlyArray<TransitionEvent> = []): WorkGraph => ({
   schemaVersion: "workgraph/v1alpha1",
@@ -66,6 +68,40 @@ const registry = attachPolicyRegistryDigest(resolution, sha256Text);
 const tagOf = (value: object): unknown => Reflect.get(value, "_tag");
 
 describe("acceptance for design spec 0002 portable slices", () => {
+  test("local input custody rejects unsafe names before exposing a file capability", async () => {
+    expect(decodeSafeBasename("graph.json").ok).toBeTrue();
+    for (const value of ["", ".", "..", "../graph.json", "/graph.json", "a\\b", "a\0b"]) {
+      expect(decodeSafeBasename(value).ok).toBeFalse();
+    }
+    expect(decodeSafeBasename("a".repeat(255)).ok).toBeTrue();
+    expect(decodeSafeBasename("a".repeat(256)).ok).toBeFalse();
+    expect(decodeSafeBasename("é".repeat(128)).ok).toBeFalse();
+
+    const store = makeLocalFileStore({
+      probe: () =>
+        Effect.succeed({ _tag: "Unavailable", detail: "injected native bridge failure" }),
+      tryAcquire: () => Effect.succeed({ _tag: "Unavailable" }),
+      release: () => Effect.succeed(false),
+    });
+    const result = await Effect.runPromise(
+      Effect.result(
+        store.observeRegularFile({
+          rootPath: ".",
+          basename: "graph.json",
+        }),
+      ),
+    );
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: "Unavailable",
+        code: "exclusive_fence_lock_unavailable",
+        targetChangeKnowledge: { _tag: "NotObserved" },
+        cleanupResidue: [],
+      },
+    });
+  });
+
   test("registry normalization is order-independent and semantic changes alter scope", () => {
     const definition = {
       id: "example.policy",
