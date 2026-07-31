@@ -1,6 +1,6 @@
 # Design spec 0002: local command loop
 
-Status: frozen second recut for implementation
+Status: frozen third recut for implementation
 
 Date: 2026-07-31
 
@@ -9,6 +9,8 @@ Base: `ba9fecdd56a3a0b592604e79b55715363e6ee5f3`
 Rejected contract head: `24a8e3a243a414f46dc5279c3723ea6bd7bd19b7`
 
 Rejected first recut: `800d0f1e998e6c61dfb5f123aaf1aa244b4707d7`
+
+Rejected second recut: `f1646a3be8509dfc39736a89e860b039a2b2d34f`
 
 ## Problem
 
@@ -73,6 +75,8 @@ idempotency facts. Projections are derived artifacts.
 | Policy registry   | assertion of accepted rules | composition root           | Reject unknown, duplicate, or malformed policy definitions. |
 | Clock value       | observation                 | runtime adapter            | Use only in lock observations.                              |
 | Random lock token | observation                 | runtime adapter            | Use only for exclusive custody.                             |
+| Process identity  | observation                 | Linux runtime adapter      | Unknown identity blocks recovery.                           |
+| Recovery grant    | operator assertion          | composition root           | Require an exact recovery-command digest.                   |
 | Write result      | observation                 | local filesystem adapter   | Never infer success from intent.                            |
 
 An append command is not an event until the engine accepts it and the store
@@ -185,6 +189,72 @@ sha256(
 
 Each displayed object uses `stableStringify` and UTF-8 bytes before SHA-256.
 The digest does not cover the envelope or receipts.
+
+The authority-bearing document digest covers the complete normalized local
+document:
+
+```ts
+const documentDigest = sha256(
+  utf8(
+    stableStringify({
+      schemaVersion: "workgraph.local-document-identity/v1alpha1",
+      document: normalizeLocalDocument(document),
+    }),
+  ),
+);
+```
+
+`normalizeLocalDocument` is this exact projection:
+
+```ts
+const normalizeLocalDocument = (value: LocalWorkGraphDocument) => ({
+  schemaVersion: value.schemaVersion,
+  revision: value.revision,
+  graphDigest: value.graphDigest,
+  eventChainDigest: value.eventChainDigest,
+  genesis: {
+    staticGraphDigest: value.genesis.staticGraphDigest,
+    graphDigest: value.genesis.graphDigest,
+    eventChainDigest: value.genesis.eventChainDigest,
+    eventCount: value.genesis.eventCount,
+  },
+  graph: normalizeGraph(value.graph),
+  receipts: value.receipts.map((receipt) => ({
+    idempotencyKey: receipt.idempotencyKey,
+    commandDigest: receipt.commandDigest,
+    policyRegistryDigest: receipt.policyRegistryDigest,
+    eventId: receipt.eventId,
+    eventIndex: receipt.eventIndex,
+    eventDigest: receipt.eventDigest,
+    priorEventChainDigest: receipt.priorEventChainDigest,
+    resultEventChainDigest: receipt.resultEventChainDigest,
+    priorRevision: receipt.priorRevision,
+    priorGraphDigest: receipt.priorGraphDigest,
+    resultRevision: receipt.resultRevision,
+    resultGraphDigest: receipt.resultGraphDigest,
+  })),
+});
+```
+
+It preserves event order and receipt order. The decoder rejects unknown fields
+before hashing.
+
+The domain tag is part of the hashed object. The input to SHA-256 is exactly
+the UTF-8 encoding of the displayed `stableStringify` result.
+
+Paths, lock tokens, process observations, and registry inputs that are not in
+the document are outside its scope. The digest binds all genesis, graph,
+event-chain, receipt, revision, and stored digest fields.
+
+Bun and Node must produce the same normalized value, UTF-8 bytes, and digest.
+Acceptance uses one fixed preimage vector. It also changes each
+authority-bearing field in isolation and requires a different digest.
+
+The fixture commits the exact normalized UTF-8 preimage and expected lowercase
+digest literal. Code under test does not calculate the expected value.
+
+These mutation and domain-separation probes test the digest construction.
+They do not claim to prove that SHA-256 is collision-free.
 
 Initialization scans each genesis event once. It stores the chain digest after
 the last genesis event.
@@ -442,6 +512,9 @@ correction is a new event that uses the existing correction semantics.
 | Read command file              | local store adapter | retained root and direct-child name | bytes plus file identity |
 | Read policy file               | local store adapter | retained root and direct-child name | bytes plus digest        |
 | Acquire lock                   | local store adapter | retained root and sibling lock name | acquired token or busy   |
+| Hold kernel fence custody      | local store adapter | open exact lock-record inode        | exclusive kernel lock    |
+| Observe owner death            | local store adapter | recorded process identity           | exact or unknown state   |
+| Authorize recovery             | composition root    | exact recovery-command digest       | opaque one-use grant     |
 | Create temporary file          | local store adapter | retained root directory             | file identity            |
 | Replace target                 | local store adapter | accepted write plan and held lock   | rename observation       |
 | Synchronize file and directory | local store adapter | held file and directory handles     | sync observation         |
@@ -455,12 +528,15 @@ network, GitHub, Herdr, or Semantic Systems capability.
 ## Linux path and file custody
 
 Tracer 0002 supports Linux only. The adapter checks `process.platform` and the
-required `/proc/self/fd` behavior before it reads project inputs or requests a
-mutation.
+required `/proc/self/fd` and `flock(2)` behavior before it reads project inputs
+or requests a mutation.
 
 An unsupported platform returns `Unavailable` with code
 `unsupported_platform`. Missing or incompatible procfs behavior returns
 `Unavailable` with code `handle_relative_paths_unavailable`.
+
+Missing or incompatible exclusive file-lock behavior returns `Unavailable`
+with code `exclusive_fence_lock_unavailable`.
 
 Each operation receives one explicit root path. Graph, command, policy, lock,
 temporary, and projection-directory names must be safe direct-child basenames.
@@ -511,6 +587,9 @@ device. Replacement cannot cross a filesystem boundary.
 The adapter prepares a complete token-bound lock record in an exclusive
 temporary file. It writes and synchronizes the record before publication.
 
+It acquires the exclusive kernel lock on the open temporary-record inode
+before publication. It retains that open locked inode after publication.
+
 An atomic hard link publishes the public sibling lock name. Existing-lock
 failure returns `Busy`. After publication, the adapter removes the temporary
 lock name and synchronizes the root.
@@ -518,10 +597,127 @@ lock name and synchronizes the root.
 The public lock record is therefore absent or complete. Atomic link publication
 grants exclusive custody.
 
-The adapter never removes an existing lock automatically. `lock inspect` is a
-read-only command. `lock recover` requires an exact lock-record digest and an
-exact current graph digest. The agent skill must request operator authority
-before it runs `lock recover`.
+Every lock record contains this owner observation:
+
+```ts
+interface ProcessIdentity {
+  readonly bootId: string;
+  readonly pid: number;
+  readonly procDirectoryDevice: number;
+  readonly procDirectoryInode: number;
+  readonly startTimeTicks: number;
+}
+```
+
+`fenceRecordDigest` is SHA-256 over the UTF-8 bytes of
+`stableStringify(record)`. The record schema version is its domain tag. The
+decoder rejects unknown fields before it calculates the digest.
+
+The adapter reads the boot ID, the `/proc/<pid>` directory identity, and field
+22 from `/proc/<pid>/stat`. It reads them through retained handles and confirms
+the values after the record is public.
+
+Every compliant holder also keeps an exclusive nonblocking Linux `flock(2)` on
+the open public-fence inode for its complete protected operation. The holder
+must own that kernel lock at every resource mutation.
+
+`ExclusiveFenceLock` is an Effect service. Bun and Node layers implement it
+through the same audited native syscall bridge. They do not start a process.
+This narrow native bridge is required because pathname checks cannot remove a
+check-to-mutation race.
+
+If the bridge or required `flock(2)` behavior is unavailable, the adapter
+returns `Unavailable` before it reads project inputs or requests a mutation.
+
+The liveness service returns one of these observations:
+
+- `OwnerLiveExact` when the current process has every recorded identity field
+  and a nonblocking kernel-lock probe returns `EWOULDBLOCK`
+- `OwnerDeadExact` when the recorded process identity is absent or replaced and
+  recovery acquires exclusive kernel custody of the exact recorded fence inode
+- `OwnerLivenessUnknown` when the service cannot make either exact observation.
+
+The kernel releases `flock` custody when the last owning file description
+closes or its process exits. The process observation establishes death.
+Successful lock acquisition establishes that no stale file description can
+perform another compliant mutation.
+
+Recovery never fences an exact live owner or an unknown owner. It returns
+`RecoveryBlocked` without changing the public fence.
+
+### Canonical public-fence handoff
+
+Each resource has one deterministic public fence basename. That public name
+remains present from initial acquisition through the final protected
+observation.
+
+Authorized recovery performs this exact handoff:
+
+1. Read and digest the complete public fence record.
+2. Compare the caller's expected fence digest and guarded resource identity.
+3. Require an absent or replaced exact recorded process identity.
+4. Acquire exclusive kernel custody of the open predecessor fence inode.
+5. Return `RecoveryBlocked` if death or nonblocking acquisition is not exact.
+6. Create, write, and synchronize a token-bound recovery record.
+7. Acquire exclusive kernel custody of the open recovery-record inode.
+8. Reobserve the old public record and its file identity.
+9. Atomically rename the recovery record over the same public fence basename.
+10. Keep both inode locks until the directory is synchronized.
+11. Reobserve that the public name has the recovery token and file identity.
+12. Release the predecessor inode lock and retain the recovery inode lock.
+
+The recovery record contains the predecessor fence digest, recovery operation,
+new random token, new process identity, and guarded resource identity.
+
+The rename replaces one complete record with another complete record. The
+canonical public name is never absent during handoff.
+
+An uncertain rename result is classified by immediate handle-relative
+observation. The old digest means that handoff did not occur. The new digest
+means that recovery owns the fence. Any other digest is `Conflict`.
+
+The predecessor loses the ability to run a compliant mutation before the token
+changes. A second recovery cannot acquire the predecessor or recovery inode
+lock. It returns `RecoveryBlocked`. A normal writer observes the public name
+and returns `Busy`.
+
+Therefore no compliant actor can replace a live holder's token. A holder does
+not depend on a check immediately before each mutation. This invariant removes
+the check-to-mutation race.
+
+The owner retains the same canonical public token, open inode, and kernel lock
+across all protected mutations. Before it reports final success or abort, it
+reobserves the public token and the complete guarded resource state. It then
+unlinks only that exact fence identity, synchronizes the directory, and
+releases the open inode lock.
+
+If final reobservation or release is uncertain, recovery returns its typed
+recovery-required outcome. It does not report success or abort.
+
+The adapter never recovers a lock automatically. Every recovery API requires
+an `OperatorRecoveryAuthority` capability scoped to the digest of the exact
+recovery command. A boolean or decoded JSON field cannot provide this
+authority.
+
+The authority service has this logical boundary:
+
+```ts
+interface OperatorRecoveryAuthority {
+  readonly authorize: (
+    recoveryCommandDigest: `sha256:${string}`,
+  ) => Effect.Effect<RecoveryGrant, AuthorityDenied>;
+}
+```
+
+`RecoveryGrant` is opaque and single-use. The composition root owns the
+service. Core decoders and filesystem adapters cannot construct a grant.
+
+`recoveryCommandDigest` is SHA-256 over the UTF-8 bytes of
+`stableStringify(command)`. Each recovery message has a distinct schema
+version, which supplies its domain tag.
+
+The CLI creates that capability only inside an explicit `recover` subcommand.
+The agent skill must request operator authority before it runs such a command.
 
 ## Atomic replacement protocol
 
@@ -572,6 +768,7 @@ interface GenesisPublicationRecord {
   readonly schemaVersion: "workgraph.genesis-publication/v1alpha1";
   readonly operation: "init";
   readonly token: string;
+  readonly owner: ProcessIdentity;
   readonly targetBasename: string;
   readonly temporaryBasename: string;
   readonly documentDigest: `sha256:${string}`;
@@ -613,37 +810,36 @@ digest, and basename determine the row. Every other observation is
 `Conflicted`.
 
 `GenesisRecoveryRequired` includes the lock-record digest, document digest,
-current custody basename, target observation, temporary observation, and
+canonical fence basename, target observation, temporary observation, and
 cleanup residue. It never claims that publication failed or completed.
 
 The public recovery API is:
 
 ```ts
-recoverGenesisPublication({
-  root,
-  targetBasename,
-  custodyBasename,
-  expectedLockRecordDigest,
-  expectedDocumentDigest,
-  action: "finalize" | "abort",
-});
+interface RecoverGenesisPublication {
+  readonly schemaVersion: "workgraph.genesis.recover/v1alpha1";
+  readonly root: string;
+  readonly targetBasename: string;
+  readonly expectedLockRecordDigest: `sha256:${string}`;
+  readonly expectedDocumentDigest: `sha256:${string}`;
+  readonly action: "finalize" | "abort";
+}
+
+recoverGenesisPublication(command, authority);
 ```
 
 The CLI is:
 
 ```text
-workgraph init recover --root <dir> --file <basename> --custody <basename> --lock-digest <sha256> --document-digest <sha256> --action <finalize|abort>
+workgraph init recover --root <dir> --file <basename> --lock-digest <sha256> --document-digest <sha256> --action <finalize|abort>
 ```
 
-Recovery requires explicit operator authority. It first compares the complete
-lock record, custody basename, and both expected digests.
+Recovery requires explicit operator authority. It compares the complete lock
+record and both expected digests. It then uses the canonical public-fence
+handoff.
 
-The first recovery uses the public lock basename. A recovery fault returns the
-token-bound recovery basename for the next exact call.
-
-Recovery atomically renames the lock file to a token-bound recovery name.
-Every normal writer checks the public lock name before each mutating boundary.
-If that name disappears, the writer stops.
+The public fence basename never changes. A recovery fault returns the current
+public fence digest for the next exact call.
 
 For `finalize`, recovery performs these rules:
 
@@ -653,16 +849,21 @@ For `finalize`, recovery performs these rules:
 4. Remove the exact temporary name.
 5. Synchronize the root again.
 6. Decode and inspect the target.
-7. Remove any exact token-bound lock-record temporary name.
-8. Remove the seized recovery lock by exact token.
+7. Compare its complete document digest with the expected digest.
+8. Reobserve the exact recovery fence and `Published` target state.
+9. Remove any exact token-bound lock-record temporary name.
+10. Remove the public recovery fence by exact token and file identity.
+11. Synchronize the root.
 
 For `abort`, recovery performs these rules:
 
 1. If an exact target exists, return `Conflict` with `genesis_already_linked`.
 2. Remove only the exact temporary file.
 3. Synchronize the root.
-4. Remove any exact token-bound lock-record temporary name.
-5. Remove the seized recovery lock by exact token.
+4. Reobserve the exact recovery fence and `PreparedEmpty` target state.
+5. Remove any exact token-bound lock-record temporary name.
+6. Remove the public recovery fence by exact token and file identity.
+7. Synchronize the root.
 
 Any other file identity returns `Conflict` without unlinking it. A recovery
 fault returns `GenesisRecoveryRequired` with the new observed state.
@@ -670,32 +871,55 @@ fault returns `GenesisRecoveryRequired` with the new observed state.
 Recovery returns `GenesisRecovered` with disposition `finalized` or `aborted`.
 The outcome includes the final target observation and residue list.
 
-This protocol coordinates only writers that obey the lock checks. Operator
-recovery is a human-authorized local action, not proof that the first writer
-terminated.
+Recovery can start mutations only after exact predecessor-death evidence and
+atomic public-token handoff. Operator authority cannot override a live or
+unknown owner.
+
+The handoff remains safe at each interruption boundary:
+
+| Interruption point                    | Public fence       | Permitted continuation                          |
+| ------------------------------------- | ------------------ | ----------------------------------------------- |
+| Before recovery-record creation       | predecessor exact  | retry the same expected digest                  |
+| During record write or sync           | predecessor exact  | remove only the exact unpublished candidate     |
+| After death proof, before kernel lock | predecessor exact  | reprove death; one recovery can acquire custody |
+| After predecessor kernel lock         | predecessor exact  | the lock holder alone can continue              |
+| After candidate kernel lock           | predecessor exact  | both protected inodes remain held               |
+| After locks, before handoff           | predecessor exact  | reobserve the public record before handoff      |
+| During atomic handoff                 | predecessor or new | observe the public digest; never infer custody  |
+| After handoff, before resource change | recovery exact     | continue through the same public fence          |
+| During finalize or abort              | recovery exact     | return fresh `GenesisRecoveryRequired` evidence |
+| During final reobservation or release | recovery or absent | observe resource and fence; never infer success |
+
+The old owner cannot interleave after exact death proof. Other compliant
+actors cannot interleave while the recovery owner is live. The public fence
+does not have a rename gap.
 
 ## Outcomes
 
-Every API and CLI result uses one of these tags:
+Mutation, document-inspection, and projection-publication results use one of
+these tags. Read-only lock inspection uses the state tags in its lock section.
 
-| Tag                       | Meaning                                                                 | Target can differ from the initial observation |
-| ------------------------- | ----------------------------------------------------------------------- | ---------------------------------------------- |
-| `Initialized`             | A new coherent genesis document was linked, synced, and inspected.      | New target only                                |
-| `GenesisFailed`           | Genesis stopped before public custody or target publication.            | No target change by this command               |
-| `GenesisRecovered`        | Exact recovery finalized or aborted a known genesis publication.        | Reported by disposition                        |
-| `GenesisRecoveryRequired` | Genesis publication or recovery needs exact operator continuation.      | Reported by target observation                 |
-| `Inspected`               | The document was decoded and identified.                                | No                                             |
-| `Applied`                 | Rename, directory sync, and read-back matched the result identity.      | Yes                                            |
-| `AlreadyApplied`          | The same idempotency key and command digest already have a receipt.     | No new change                                  |
-| `Rejected`                | Input, policy, candidate, or path validation failed.                    | No                                             |
-| `Conflict`                | Expected identity, idempotency, event identity, or custody changed.     | No command change                              |
-| `Busy`                    | Another lock owns the target.                                           | Unknown external activity                      |
-| `StoreFailed`             | An append operation failed before target replacement.                   | Reported by target-change knowledge            |
-| `Unavailable`             | This platform cannot supply the required custody capability.            | No command change                              |
-| `WriteUnknown`            | Target-replacement rename started without durable read-back.            | Unknown                                        |
-| `ProjectionFailed`        | Projection publication stopped before the active-pointer rename.        | No pointer change by this command              |
-| `ProjectionUnknown`       | Active-pointer rename was called without complete publication evidence. | Unknown active snapshot                        |
-| `ProjectionWritten`       | All projection files carry the inspected graph digest.                  | Graph unchanged                                |
+| Tag                              | Meaning                                                                  | Target can differ from the initial observation |
+| -------------------------------- | ------------------------------------------------------------------------ | ---------------------------------------------- |
+| `Initialized`                    | A new coherent genesis document was linked, synced, and inspected.       | New target only                                |
+| `GenesisFailed`                  | Genesis stopped before public custody or target publication.             | No target change by this command               |
+| `GenesisRecovered`               | Exact recovery finalized or aborted a known genesis publication.         | Reported by disposition                        |
+| `GenesisRecoveryRequired`        | Genesis publication or recovery needs exact operator continuation.       | Reported by target observation                 |
+| `RecoveryBlocked`                | Recovery lacks authority, owner-death evidence, or kernel fence custody. | No command change                              |
+| `Inspected`                      | The document was decoded and identified.                                 | No                                             |
+| `Applied`                        | Rename, directory sync, and read-back matched the result identity.       | Yes                                            |
+| `AlreadyApplied`                 | The same idempotency key and command digest already have a receipt.      | No new change                                  |
+| `Rejected`                       | Input, policy, candidate, or path validation failed.                     | No                                             |
+| `Conflict`                       | Expected identity, idempotency, event identity, or custody changed.      | No command change                              |
+| `Busy`                           | Another lock owns the target.                                            | Unknown external activity                      |
+| `StoreFailed`                    | An append operation failed before target replacement.                    | Reported by target-change knowledge            |
+| `Unavailable`                    | This platform cannot supply the required custody capability.             | No command change                              |
+| `WriteUnknown`                   | Target-replacement rename started without durable read-back.             | Unknown                                        |
+| `ProjectionFailed`               | Projection publication stopped before the active-pointer rename.         | No pointer change by this command              |
+| `ProjectionUnknown`              | Active-pointer rename was called without complete publication evidence.  | Unknown active snapshot                        |
+| `ProjectionWritten`              | All projection files carry the inspected graph digest.                   | Graph unchanged                                |
+| `ProjectionLockRecovered`        | A dead projection owner was fenced and its exact lock was released.      | No projection change                           |
+| `ProjectionLockRecoveryRequired` | Projection-lock handoff or release needs exact continuation.             | No projection change by recovery               |
 
 `Applied` is not proof of correctness or operational suitability. It is a
 runtime observation about this local transaction.
@@ -755,7 +979,10 @@ interface StoreFailed {
 interface Unavailable {
   readonly _tag: "Unavailable";
   readonly phase: "platform-check" | "root-open";
-  readonly code: "unsupported_platform" | "handle_relative_paths_unavailable";
+  readonly code:
+    | "unsupported_platform"
+    | "handle_relative_paths_unavailable"
+    | "exclusive_fence_lock_unavailable";
   readonly priorIdentity?: GraphIdentity;
   readonly targetChangeKnowledge: { readonly _tag: "NotObserved" };
   readonly cleanupResidue: readonly [];
@@ -764,7 +991,7 @@ interface Unavailable {
 interface GenesisRecoveryRequired {
   readonly _tag: "GenesisRecoveryRequired";
   readonly phase: GenesisPublicationPhase;
-  readonly custodyBasename: string;
+  readonly fenceBasename: string;
   readonly lockRecordDigest: `sha256:${string}`;
   readonly documentDigest: `sha256:${string}`;
   readonly targetObservation: FileObservation;
@@ -787,6 +1014,15 @@ interface GenesisRecovered {
   readonly graphIdentity?: GraphIdentity;
   readonly targetObservation: FileObservation;
   readonly cleanupResidue: ReadonlyArray<CleanupResidue>;
+}
+
+interface RecoveryBlocked {
+  readonly _tag: "RecoveryBlocked";
+  readonly code:
+    "authority_missing" | "owner_live" | "owner_liveness_unknown" | "fence_custody_busy";
+  readonly fenceDigest: `sha256:${string}`;
+  readonly owner: ProcessIdentity;
+  readonly liveness: "OwnerLiveExact" | "OwnerDeadExact" | "OwnerLivenessUnknown";
 }
 
 interface ProjectionFailed {
@@ -816,6 +1052,23 @@ interface ProjectionUnknown {
     readonly basename: string;
     readonly digest: `sha256:${string}`;
   }>;
+  readonly cleanupResidue: ReadonlyArray<CleanupResidue>;
+}
+
+interface ProjectionLockRecovered {
+  readonly _tag: "ProjectionLockRecovered";
+  readonly predecessorFenceDigest: `sha256:${string}`;
+  readonly recoveryFenceDigest: `sha256:${string}`;
+  readonly pointerObservation: FileObservation;
+  readonly cleanupResidue: ReadonlyArray<CleanupResidue>;
+}
+
+interface ProjectionLockRecoveryRequired {
+  readonly _tag: "ProjectionLockRecoveryRequired";
+  readonly phase: ProjectionLockRecoveryPhase;
+  readonly fenceBasename: ".workgraph-project.lock";
+  readonly fenceObservation: FileObservation;
+  readonly pointerObservation: FileObservation;
   readonly cleanupResidue: ReadonlyArray<CleanupResidue>;
 }
 ```
@@ -856,11 +1109,43 @@ first-directory-sync
 temporary-unlink
 final-directory-sync
 target-readback
-lock-seize
-recovery-observe
+recovery-record-create
+recovery-record-write
+recovery-record-sync
+recovery-owner-observe
+recovery-predecessor-lock
+recovery-candidate-lock
+recovery-fence-reobserve
+recovery-handoff
+recovery-handoff-sync
+recovery-handoff-observe
 recovery-finalize
 recovery-abort
+recovery-final-observe
 recovery-release
+```
+
+`ProjectionLockRecoveryPhase` is one of:
+
+```text
+output-open
+fence-read
+pointer-read
+authority-check
+owner-observe
+predecessor-lock
+recovery-record-create
+recovery-record-write
+recovery-record-sync
+candidate-lock
+fence-reobserve
+fence-handoff
+handoff-directory-sync
+handoff-observe
+residue-inspect
+final-reobserve
+fence-release
+release-directory-sync
 ```
 
 Every append fault before the target-replacement rename returns `StoreFailed`,
@@ -912,11 +1197,13 @@ The Bun composition extends `workgraph` with these commands:
 
 ```text
 workgraph init --root <dir> --graph <basename> --file <basename> [--policies <basename>]
-workgraph init recover --root <dir> --file <basename> --custody <basename> --lock-digest <sha256> --document-digest <sha256> --action <finalize|abort>
+workgraph init recover --root <dir> --file <basename> --lock-digest <sha256> --document-digest <sha256> --action <finalize|abort>
 workgraph inspect --root <dir> --file <basename> [--policies <basename>]
 workgraph append-transition --root <dir> --file <basename> --command <basename> [--policies <basename>]
 workgraph project --root <dir> --file <basename> --out <basename>
 workgraph project inspect --root <dir> --out <basename>
+workgraph project lock inspect --root <dir> --out <basename>
+workgraph project lock recover --root <dir> --out <basename> --lock-digest <sha256> --pointer-digest <sha256|absent>
 workgraph lock inspect --root <dir> --file <basename>
 workgraph lock recover --root <dir> --file <basename> --lock-digest <sha256> --graph-digest <sha256>
 ```
@@ -930,7 +1217,7 @@ diagnostics to standard error.
 The exit codes are:
 
 - `0` for `Initialized`, `GenesisRecovered`, `Inspected`, `Applied`,
-  `AlreadyApplied`, and `ProjectionWritten`
+  `AlreadyApplied`, `ProjectionWritten`, and `ProjectionLockRecovered`
 - `2` for `Rejected`
 - `3` for `Conflict` and `Busy`
 - `4` for `WriteUnknown`
@@ -939,6 +1226,8 @@ The exit codes are:
 - `7` for `ProjectionUnknown`
 - `8` for `GenesisRecoveryRequired`
 - `9` for `GenesisFailed`
+- `10` for `ProjectionLockRecoveryRequired`
+- `11` for `RecoveryBlocked`
 - `64` for invalid CLI use
 - `69` for `Unavailable`.
 
@@ -1039,6 +1328,110 @@ and any verified residue. It performs no cleanup.
 Projection drift compares regenerated bytes with the active snapshot. A
 projection cannot serve as the expected identity for an append command.
 
+### Projection-lock recovery
+
+The output lock is the canonical public fence for one projection directory.
+Its deterministic basename is `.workgraph-project.lock`.
+
+Its complete record has this shape:
+
+```ts
+interface ProjectionLockRecord {
+  readonly schemaVersion: "workgraph.projection-lock/v1alpha1";
+  readonly operation: "project" | "project-recovery";
+  readonly token: string;
+  readonly owner: ProcessIdentity;
+  readonly outputBasename: string;
+  readonly sourceIdentity: GraphIdentity;
+  readonly priorPointerDigest: `sha256:${string}` | "absent";
+  readonly predecessorFenceDigest?: `sha256:${string}`;
+}
+```
+
+The lock record binds the output directory, source graph, and active pointer
+that the projector observed before publication.
+
+The read-only inspection message is:
+
+```ts
+interface InspectProjectionLock {
+  readonly schemaVersion: "workgraph.projection-lock.inspect/v1alpha1";
+  readonly root: string;
+  readonly outputBasename: string;
+}
+```
+
+Inspection returns one exact state:
+
+- `ProjectionLockAbsent`
+- `ProjectionLockHeld` with record digest and `OwnerLiveExact`
+- `ProjectionLockDead` with record digest and `OwnerDeadExact`
+- `ProjectionLockLivenessUnknown` with record digest
+- `ProjectionLockForeign` with the file observation.
+
+`ProjectionLockHeld` also requires an `EWOULDBLOCK` kernel-lock probe.
+`ProjectionLockDead` requires a successful kernel-lock probe that inspection
+releases before it returns. Every inconsistent combination is
+`ProjectionLockLivenessUnknown`.
+
+Inspection also reports `CURRENT`, verified staging directories, and verified
+orphan snapshots. It performs no mutation.
+
+The recovery message is:
+
+```ts
+interface RecoverProjectionLock {
+  readonly schemaVersion: "workgraph.projection-lock.recover/v1alpha1";
+  readonly root: string;
+  readonly outputBasename: string;
+  readonly expectedFenceDigest: `sha256:${string}`;
+  readonly expectedPointerDigest: `sha256:${string}` | "absent";
+}
+```
+
+The API also requires `OperatorRecoveryAuthority` scoped to the stable digest
+of this exact message. The command cannot carry its own authority.
+
+Projection-lock recovery performs these steps:
+
+1. Retain the root and output directory handles.
+2. Decode the exact recovery message and authority scope.
+3. Compare the public fence and `CURRENT` with both expected digests.
+4. Require `OwnerDeadExact` for the current fence owner.
+5. Use the canonical public-fence handoff with operation
+   `project-recovery`.
+6. Reobserve the same `CURRENT` digest under the new public token.
+7. Inspect staging and orphan snapshots without deleting them.
+8. Reobserve the recovery token, `CURRENT`, and residue list.
+9. Unlink only the exact public recovery fence.
+10. Synchronize the output directory.
+
+The recovery command never writes `CURRENT`, a snapshot, a manifest, or a
+staging directory. Residue remains visible to projection inspection.
+
+`ProjectionLockRecovered` includes the predecessor and recovery fence digests,
+the pointer observation, and the verified residue list.
+
+`ProjectionLockRecoveryRequired` includes the exact phase, canonical fence
+basename, current fence digest or observation, pointer observation, and
+verified residue. A later recovery uses its current fence digest.
+
+`RecoveryBlocked` covers missing authority, a live exact owner, unknown owner
+liveness, and unavailable exclusive custody of a contended fence. `Conflict`
+covers an absent, foreign, or changed fence and a changed pointer guard.
+
+If the recovery process stops after handoff, the same protocol can fence it
+only after its exact death is established. The canonical public name remains
+present. Thus a crashed projection owner cannot block progress forever after
+authorized exact recovery.
+
+The CLI commands are:
+
+```text
+workgraph project lock inspect --root <dir> --out <basename>
+workgraph project lock recover --root <dir> --out <basename> --lock-digest <sha256> --pointer-digest <sha256|absent>
+```
+
 ## Agent skill
 
 The implementation includes `skills/workgraph-local/SKILL.md`. The skill uses
@@ -1053,6 +1446,8 @@ The skill must:
 - report the phase and cleanup residue for `StoreFailed`
 - inspect after `WriteUnknown` or `ProjectionUnknown`
 - preserve all evidence from `GenesisRecoveryRequired`
+- inspect a projection lock before it requests projection-lock recovery
+- preserve all evidence from `ProjectionLockRecoveryRequired`
 - avoid an automatic mutating retry
 - preserve human assertions and evidence categories
 - request operator authority before lock or genesis recovery.
@@ -1068,11 +1463,13 @@ All waits are bounded. Lock acquisition returns `Busy` without an indefinite
 wait. File reads, writes, and sync operations support cancellation.
 
 A crashed writer can leave a lock or temporary file. A later writer reports
-`Busy` and does not infer that the owner is dead. Explicit lock recovery
-restores progress after an operator inspects the evidence.
+`Busy` and does not infer that the owner is dead. Read-only inspection reports
+owner liveness. Explicit operator-authorized recovery requires
+`OwnerDeadExact` and restores progress through atomic public-fence handoff.
 
 Genesis publication exposes exact finalize and abort recovery. Projection
-inspection exposes inactive staging and orphan snapshots.
+inspection exposes inactive staging and orphan snapshots. Projection-lock
+recovery releases a dead owner's fence without deleting those artifacts.
 
 This tracer does not claim coordination with programs that ignore the lock.
 The final target-identity comparison detects many such changes, but it cannot
@@ -1171,6 +1568,30 @@ items:
 59. The agent skill passes the standard skill validation.
 60. The skill reports every failure and unknown outcome without a success,
     sandbox, or authentication overclaim.
+61. One fixed document preimage produces byte-equal normalized bytes and
+    document digest under Bun and genuine Node.
+62. Each authority-bearing document field has an isolated mutation probe.
+    Every probe changes the document digest.
+63. A reordered JSON object with the same normalized document produces the
+    same document digest. A missing domain tag produces a different digest.
+64. Recovery with a live or unknown owner returns `RecoveryBlocked` before
+    public-fence or resource mutation.
+65. Fault injection at every fence-handoff boundary observes the predecessor
+    or recovery record at the canonical public name. It never observes an
+    intentional absence.
+66. A paused live owner at every mutation boundary prevents recovery handoff.
+    After exact owner death and handoff, that owner cannot resume a mutation.
+67. Genesis `finalized` and `aborted` outcomes require final fence and resource
+    reobservation under the recovery token.
+68. Projection-lock inspection distinguishes absent, live, dead, unknown, and
+    foreign states without mutation.
+69. Exact authorized recovery of a dead projection owner preserves `CURRENT`
+    and all residue, releases the exact fence, and permits the next projection.
+70. Every projection-lock recovery phase has a crash journey. A later exact
+    recovery fences the dead recovery owner and restores progress.
+71. Cross-process Bun and Node tests establish that the native fence bridge
+    blocks a second holder and releases custody only after close or process
+    death.
 
 ### Executable acceptance commands
 
@@ -1206,7 +1627,12 @@ The design is rejected or revised if:
 - custody validation serializes or hashes any event more than a constant number
   of times
 - an accepted receipt does not extend the prior event-chain digest
+- document identity omits a stored field or lacks its exact domain tag
 - a genesis crash state has no exact finalize or abort journey
+- recovery changes a public token without exact predecessor-death evidence
+- public-fence handoff creates an absent-name window
+- a live owner can mutate concurrently with a compliant recovery
+- recovery reports finalized or aborted before final protected reobservation
 - the public decision type contains an outcome that public decoding cannot
   reach
 - a registry digest omits built-ins or depends on definition order
@@ -1220,6 +1646,8 @@ The design is rejected or revised if:
 - an unsupported platform reads project files before `Unavailable`
 - a projection failure leaves partial files in the active snapshot
 - a pointer-publication uncertainty lacks a `ProjectionUnknown` observation
+- a dead projection owner has no exact authorized lock-recovery journey
+- projection-lock recovery deletes or changes a projection artifact
 - Bun and Node give different semantic results
 - a projection omits the graph digest
 - a policy enters through an implicit global registry

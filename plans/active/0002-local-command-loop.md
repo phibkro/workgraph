@@ -1,6 +1,6 @@
 # Plan 0002: local command loop
 
-Status: second recut contract frozen, implementation not present
+Status: third recut contract frozen, implementation not present
 
 Frozen base: `ba9fecdd56a3a0b592604e79b55715363e6ee5f3`
 
@@ -42,6 +42,29 @@ It also removes unreachable numeric-exhaustion decisions. Public collection
 bounds now own that rejection.
 
 The verdict remains an observation about `800d0f1`. It is not acceptance of
+this recut.
+
+## Third independent contract review
+
+Reviewed head: `f1646a3be8509dfc39736a89e860b039a2b2d34f`
+
+Verdict: `CHANGES_REQUIRED`
+
+The third review found four blocking gaps:
+
+1. Genesis recovery removed the public lock before it fenced the old writer.
+2. The authority-bearing document digest was not defined.
+3. A crashed projection owner had no projection-lock recovery journey.
+4. The acceptance scaffold omitted the projection-store implementation file.
+
+This recut keeps one canonical public fence through recovery. It requires
+exact predecessor-death evidence before an atomic same-name token handoff.
+
+It defines the complete document digest and its Bun and Node probes. It also
+adds operator-authorized projection-lock recovery and the missing scaffold
+entry.
+
+The verdict remains an observation about `f1646a3`. It is not acceptance of
 this recut.
 
 ## Product dependency
@@ -88,17 +111,20 @@ The Control Room adapter requires both products. It is not part of 0002.
 
 - Add the bounded duplicate-key-safe decoder.
 - Add deterministic document encoding.
+- Add the exact domain-separated complete-document digest.
 - Add the SHA-256 service boundary.
-- Add malformed, hostile, and parity tests.
+- Add malformed, hostile, parity, and digest-mutation tests.
 
 ### Slice 3: local custody
 
 - Add the Effect store service.
 - Add Bun and Node live layers.
 - Add Linux retained-directory-handle custody.
+- Add one audited Linux `flock(2)` bridge for Bun and Node fence custody.
 - Add lock, temporary-file, sync, rename, and read-back handling.
 - Add total pre-rename and unknown post-rename outcomes.
-- Add exact genesis finalize and abort recovery.
+- Add a no-gap canonical fence handoff with exact owner-death evidence.
+- Add exact genesis finalize and abort recovery under that fence.
 - Add ancestor-swap, link, command-file, and cleanup adversaries.
 
 ### Slice 4: product surfaces
@@ -108,6 +134,7 @@ The Control Room adapter requires both products. It is not part of 0002.
 - Add digest-bound local projections and drift checks.
 - Publish projections through immutable snapshots and an atomic active pointer.
 - Add total projection failure and unknown outcomes.
+- Add read-only projection-lock inspection and authorized dead-owner recovery.
 - Add the usage guide.
 - Add the local agent skill.
 
@@ -134,10 +161,12 @@ incompatibility.
 
 1. Review registry normalization and O(n) receipt coherence before store work.
 2. Review the pure append decision before filesystem work.
-3. Review genesis crash-state recovery before a live adapter runs.
+3. Review process identity and canonical fence handoff before a live adapter
+   runs.
 4. Review Linux handle-relative custody before a live adapter runs.
-5. Review every store and projection fault outcome before CLI integration.
-6. Run an independent exact-head review before integration.
+5. Review genesis and projection-lock recovery at every interruption boundary.
+6. Review every store and projection fault outcome before CLI integration.
+7. Run an independent exact-head review before integration.
 
 ## Deferred decisions
 
@@ -147,3 +176,8 @@ incompatibility.
 - A later tracer can define a Control Room projection adapter.
 
 No deferred decision blocks the 0002 implementation.
+
+The narrow native `flock(2)` bridge is a documented stack divergence.
+Pathname-only TypeScript APIs cannot remove the recovery
+check-to-mutation race. The bridge starts no process and exposes only typed
+exclusive-fence custody.

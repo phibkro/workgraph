@@ -47,6 +47,7 @@ const requiredImplementation = [
   "src/fixture/policy-registry-0001.ts",
   "src/local/document-codec.ts",
   "src/local/store.ts",
+  "src/local/projection-store.ts",
   "src/local/bun-file-store.ts",
   "src/local/node-file-store.ts",
   "src/cli/local-command.ts",
