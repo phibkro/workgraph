@@ -2,8 +2,26 @@ import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import { open, stat, type FileHandle } from "node:fs/promises";
 import { Context, Effect, Layer, Result, type Scope } from "effect";
+import { validateGraph, type ValidationIssue } from "../core/graph.ts";
+import {
+  validateDocumentCoherence,
+  type GraphIdentity,
+  type LocalWorkGraphDocument,
+  type Sha256Digest,
+} from "../core/local-command.ts";
 import { immutableSnapshot } from "../core/normalize.ts";
-import type { Sha256Digest } from "../core/local-command.ts";
+import {
+  attachPolicyRegistryDigest,
+  resolvePolicyRegistry,
+  type RegistryIssue,
+  type ResolvedPolicyRegistry,
+} from "../core/policy-registry.ts";
+import {
+  decodeLocalDocument,
+  decodePolicyDefinitions,
+  sha256Text,
+  type DecodeIssue,
+} from "./document-codec.ts";
 
 const MAX_INPUT_BYTES = 8 * 1024 * 1024;
 const PROC_SELF_FD = "/proc/self/fd";
@@ -67,6 +85,26 @@ export interface ObserveRegularFileInput {
   readonly basename: string;
 }
 
+export interface InspectLocalDocumentRequest {
+  readonly rootPath: string;
+  readonly fileBasename: string;
+  readonly policyBasename?: string;
+}
+
+export interface InspectedLocalDocument {
+  readonly _tag: "Inspected";
+  readonly fileBasename: SafeBasename;
+  readonly fileObservation: ExactFileObservation;
+  readonly policyFile?: {
+    readonly basename: SafeBasename;
+    readonly observation: ExactFileObservation;
+  };
+  readonly identity: GraphIdentity;
+  readonly revision: number;
+  readonly policyRegistry: ResolvedPolicyRegistry;
+  readonly document: LocalWorkGraphDocument;
+}
+
 export interface StoreUnavailable {
   readonly _tag: "Unavailable";
   readonly phase: "platform-check" | "root-open";
@@ -83,6 +121,8 @@ export interface StoreInputRejected {
   readonly phase: "input-read";
   readonly code:
     | "unsafe_basename"
+    | "invalid_inspection_request"
+    | "child_absent"
     | "child_not_regular"
     | "child_link_count_invalid"
     | "input_too_large"
@@ -101,6 +141,20 @@ export interface StoreReadFailed {
 
 export type StoreOpenFailure = StoreUnavailable | StoreReadFailed;
 export type StoreReadFailure = StoreUnavailable | StoreInputRejected | StoreReadFailed;
+
+export interface DocumentInspectionRejected {
+  readonly _tag: "Rejected";
+  readonly phase: "decode" | "registry-resolve";
+  readonly code:
+    | "document_decode_failed"
+    | "policy_decode_failed"
+    | "policy_registry_rejected"
+    | "document_coherence_rejected"
+    | "graph_validation_rejected";
+  readonly issues: ReadonlyArray<DecodeIssue | RegistryIssue | ValidationIssue>;
+}
+
+export type LocalDocumentInspectionFailure = StoreReadFailure | DocumentInspectionRejected;
 
 export type FenceProbeResult =
   | { readonly _tag: "Available" }
@@ -135,6 +189,9 @@ export interface LocalFileStoreApi {
   readonly observeRegularFile: (
     input: ObserveRegularFileInput,
   ) => Effect.Effect<ObservedRegularFile, StoreReadFailure>;
+  readonly inspectLocalDocument: (
+    request: InspectLocalDocumentRequest,
+  ) => Effect.Effect<InspectedLocalDocument, LocalDocumentInspectionFailure>;
 }
 
 export class LocalFileStore extends Context.Service<LocalFileStore, LocalFileStoreApi>()(
@@ -169,6 +226,12 @@ const failed = (phase: StoreReadFailed["phase"], code: string): StoreReadFailed 
 
 const rejected = (code: StoreInputRejected["code"], detail: string): StoreInputRejected =>
   immutableSnapshot({ _tag: "Rejected", phase: "input-read", code, detail });
+
+const inspectionRejected = (
+  phase: DocumentInspectionRejected["phase"],
+  code: DocumentInspectionRejected["code"],
+  issues: DocumentInspectionRejected["issues"],
+): DocumentInspectionRejected => immutableSnapshot({ _tag: "Rejected", phase, code, issues });
 
 const safeNumber = (value: bigint): number | undefined => {
   const result = Number(value);
@@ -330,9 +393,16 @@ const openRetainedRoot = (
                     typeof error === "object" && error !== null && "code" in error
                       ? String(error.code)
                       : "unknown";
-                  return code === "ELOOP"
-                    ? rejected("child_not_regular", "Symbolic-link children are not accepted.")
-                    : failed("input-read", `child_open_failed:${code}`);
+                  if (code === "ENOENT") {
+                    return rejected("child_absent", "The input file does not exist.");
+                  }
+                  if (code === "ELOOP") {
+                    return rejected(
+                      "child_not_regular",
+                      "Symbolic-link children are not accepted.",
+                    );
+                  }
+                  return failed("input-read", `child_open_failed:${code}`);
                 },
               }),
               "input-read",
@@ -427,12 +497,148 @@ const openRetainedRoot = (
     };
   });
 
+const isInspectionRequest = (value: unknown): value is InspectLocalDocumentRequest => {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) return false;
+  const keys = Reflect.ownKeys(value);
+  if (keys.some((key) => typeof key !== "string")) return false;
+  if (
+    !keys.every((key) => ["rootPath", "fileBasename", "policyBasename"].includes(String(key))) ||
+    !keys.includes("rootPath") ||
+    !keys.includes("fileBasename")
+  ) {
+    return false;
+  }
+  const record = value as Readonly<Record<string, unknown>>;
+  return (
+    typeof record.rootPath === "string" &&
+    record.rootPath.length > 0 &&
+    !record.rootPath.includes("\0") &&
+    typeof record.fileBasename === "string" &&
+    (record.policyBasename === undefined || typeof record.policyBasename === "string")
+  );
+};
+
+const decodeUtf8 = (
+  observed: ObservedRegularFile,
+  code: "document_decode_failed" | "policy_decode_failed",
+): Effect.Effect<string, DocumentInspectionRejected> =>
+  Effect.try({
+    try: () => new TextDecoder("utf-8", { fatal: true }).decode(observed.copyBytes()),
+    catch: () =>
+      inspectionRejected("decode", code, [
+        {
+          path: "$",
+          code: "invalid_utf8",
+          detail: "The input is not valid UTF-8.",
+        },
+      ]),
+  });
+
 const makeLocalFileStoreWithProbe = (
   fence: ExclusiveFenceLockApi,
   probeHandleRelativePaths: HandleRelativePathsProbe,
 ): LocalFileStoreApi => {
   const openRoot = (rootPath: string) =>
     openRetainedRoot(rootPath, fence, probeHandleRelativePaths);
+  const inspectLocalDocument = (
+    request: InspectLocalDocumentRequest,
+  ): Effect.Effect<InspectedLocalDocument, LocalDocumentInspectionFailure> => {
+    if (!isInspectionRequest(request)) {
+      return Effect.fail(
+        rejected(
+          "invalid_inspection_request",
+          "Inspection requires only rootPath, fileBasename, and optional policyBasename.",
+        ),
+      );
+    }
+    const fileBasename = decodeSafeBasename(request.fileBasename);
+    if (!fileBasename.ok) {
+      return Effect.fail(rejected(fileBasename.code, fileBasename.detail));
+    }
+    const policyBasename =
+      request.policyBasename === undefined ? undefined : decodeSafeBasename(request.policyBasename);
+    if (policyBasename !== undefined && !policyBasename.ok) {
+      return Effect.fail(rejected(policyBasename.code, policyBasename.detail));
+    }
+
+    return Effect.scoped(
+      Effect.gen(function* () {
+        const root = yield* openRoot(request.rootPath);
+        const file = yield* root.readRegularFile(fileBasename.basename);
+        const policyFile =
+          policyBasename === undefined
+            ? undefined
+            : yield* root.readRegularFile(policyBasename.basename);
+
+        const documentSource = yield* decodeUtf8(file, "document_decode_failed");
+        const decodedDocument = decodeLocalDocument(documentSource);
+        if (!decodedDocument.ok) {
+          return yield* Effect.fail(
+            inspectionRejected("decode", "document_decode_failed", decodedDocument.issues),
+          );
+        }
+
+        const optionalDefinitions =
+          policyFile === undefined
+            ? []
+            : yield* Effect.gen(function* () {
+                const source = yield* decodeUtf8(policyFile, "policy_decode_failed");
+                const decoded = decodePolicyDefinitions(source);
+                if (!decoded.ok) {
+                  return yield* Effect.fail(
+                    inspectionRejected("decode", "policy_decode_failed", decoded.issues),
+                  );
+                }
+                return decoded.value.definitions;
+              });
+        const resolution = resolvePolicyRegistry(optionalDefinitions);
+        if (!resolution.ok) {
+          return yield* Effect.fail(
+            inspectionRejected("registry-resolve", "policy_registry_rejected", resolution.issues),
+          );
+        }
+        const policyRegistry = attachPolicyRegistryDigest(resolution, sha256Text);
+
+        const coherence = validateDocumentCoherence(decodedDocument.value, sha256Text);
+        if (!coherence.accepted || coherence.identity === undefined) {
+          return yield* Effect.fail(
+            inspectionRejected("decode", "document_coherence_rejected", coherence.issues),
+          );
+        }
+        const graphValidation = validateGraph(decodedDocument.value.graph, policyRegistry);
+        if (!graphValidation.accepted) {
+          return yield* Effect.fail(
+            inspectionRejected(
+              "registry-resolve",
+              "graph_validation_rejected",
+              graphValidation.issues,
+            ),
+          );
+        }
+
+        return immutableSnapshot<InspectedLocalDocument>({
+          _tag: "Inspected",
+          fileBasename: file.basename,
+          fileObservation: file.observation,
+          ...(policyFile === undefined
+            ? {}
+            : {
+                policyFile: {
+                  basename: policyFile.basename,
+                  observation: policyFile.observation,
+                },
+              }),
+          identity: coherence.identity,
+          revision: decodedDocument.value.revision,
+          policyRegistry,
+          document: decodedDocument.value,
+        });
+      }),
+    );
+  };
+
   return {
     openRoot,
     observeRegularFile: (input) => {
@@ -444,6 +650,7 @@ const makeLocalFileStoreWithProbe = (
         Effect.flatMap(openRoot(input.rootPath), (root) => root.readRegularFile(decoded.basename)),
       );
     },
+    inspectLocalDocument,
   };
 };
 
