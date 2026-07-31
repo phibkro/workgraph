@@ -18,9 +18,10 @@ The main branch contains these accepted partial slices:
 - deterministic in-memory projection snapshots with source identity, file
   digests, manifest, tree digest, snapshot name, and pointer bytes.
 
-The latest projection snapshot checkpoint is `6603151`. Bun and genuine Node
-produce the pinned tree and pointer identities. The canonical repository gate
-passes with 67 tests.
+The latest projection snapshot checkpoint is `95187ef`. Bun and genuine Node
+produce the pinned tree and pointer identities. The receipt also binds the
+complete resolved policy registry. The canonical repository gate passes with
+68 tests.
 
 These checkpoints do not complete design 0002. The exact acceptance command
 remains red. The remaining product work includes:
