@@ -1,10 +1,39 @@
 # Plan 0002: local command loop
 
-Status: third recut contract frozen, implementation not present
+Status: implementation in progress; mutation, publication, and recovery remain incomplete
 
 Frozen base: `ba9fecdd56a3a0b592604e79b55715363e6ee5f3`
 
 Contract: `design-specs/0002-local-command-loop.md`
+
+## Integrated implementation checkpoints
+
+The main branch contains these accepted partial slices:
+
+- explicit policy registry and bounded document codec;
+- pure digest-bound append decisions and receipt validation;
+- retained-root Bun and Node read custody;
+- read-only local document inspection;
+- deterministic JSON output for the `inspect` CLI command;
+- deterministic in-memory projection snapshots with source identity, file
+  digests, manifest, tree digest, snapshot name, and pointer bytes.
+
+The latest projection snapshot checkpoint is `6603151`. Bun and genuine Node
+produce the pinned tree and pointer identities. The canonical repository gate
+passes with 67 tests.
+
+These checkpoints do not complete design 0002. The exact acceptance command
+remains red. The remaining product work includes:
+
+- genesis and append mutation adapters;
+- public fence inspection and authorized recovery;
+- immutable projection publication, inspection, and recovery;
+- the remaining CLI commands;
+- the usage guide and local agent skill;
+- the complete fault, interruption, and cross-process acceptance matrix.
+
+Do not move this plan to `plans/completed/` until every frozen acceptance item
+has direct executable evidence.
 
 ## First independent contract review
 
