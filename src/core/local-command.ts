@@ -66,6 +66,8 @@ export type AppendDecision =
   | { readonly _tag: "Conflict"; readonly code: string; readonly detail: string }
   | { readonly _tag: "Rejected"; readonly issues: ReadonlyArray<ValidationIssue> };
 
+type ApplyDecision = Extract<AppendDecision, { readonly _tag: "Apply" }>;
+
 export type AppendCompletion =
   | { readonly ok: true; readonly document: LocalWorkGraphDocument }
   | { readonly ok: false; readonly issues: ReadonlyArray<ValidationIssue> };
@@ -314,6 +316,8 @@ export const validateDocumentCoherence = (
 export const commandDigest = (command: AppendTransitionCommand, hash: HashFunction): Sha256Digest =>
   hash(stableStringify(command));
 
+const issuedApplyDecisions = new WeakSet<ApplyDecision>();
+
 const inputBoundIssues = (
   graph: WorkGraph,
   receiptCount: number,
@@ -343,6 +347,7 @@ export const decideAppend = (
   registry: ResolvedPolicyRegistry,
   hash: HashFunction,
 ): AppendDecision => {
+  const commandSnapshot = immutableSnapshot(command);
   const coherence = validateDocumentCoherence(document, hash);
   if (!coherence.accepted || coherence.identity === undefined) {
     return { _tag: "Rejected", issues: coherence.issues };
@@ -363,8 +368,19 @@ export const decideAppend = (
       ],
     };
   }
+  if (digest !== commandDigest(commandSnapshot, hash)) {
+    return {
+      _tag: "Rejected",
+      issues: [
+        coherenceIssue(
+          "command_digest_authentication_failed",
+          "Supplied command digest does not match the command.",
+        ),
+      ],
+    };
+  }
   const receipt = document.receipts.find(
-    (candidate) => candidate.idempotencyKey === command.idempotencyKey,
+    (candidate) => candidate.idempotencyKey === commandSnapshot.idempotencyKey,
   );
   if (receipt !== undefined) {
     return receipt.commandDigest === digest
@@ -375,7 +391,7 @@ export const decideAppend = (
           detail: "The idempotency key is bound to different command bytes.",
         };
   }
-  if (command.expectedPolicyRegistryDigest !== registry.digest) {
+  if (commandSnapshot.expectedPolicyRegistryDigest !== registry.digest) {
     return {
       _tag: "Conflict",
       code: "policy_registry_changed",
@@ -389,21 +405,21 @@ export const decideAppend = (
       detail: "The resolved policy registry does not authenticate.",
     };
   }
-  if (command.expectedRevision !== identity.revision) {
+  if (commandSnapshot.expectedRevision !== identity.revision) {
     return {
       _tag: "Conflict",
       code: "store_revision_changed",
       detail: "The store revision differs from the command.",
     };
   }
-  if (command.expectedGraphDigest !== identity.graphDigest) {
+  if (commandSnapshot.expectedGraphDigest !== identity.graphDigest) {
     return {
       _tag: "Conflict",
       code: "graph_digest_changed",
       detail: "The graph digest differs from the command.",
     };
   }
-  if (document.graph.events.some((event) => event.id === command.event.id)) {
+  if (document.graph.events.some((event) => event.id === commandSnapshot.event.id)) {
     return {
       _tag: "Conflict",
       code: "event_id_exists",
@@ -412,37 +428,50 @@ export const decideAppend = (
   }
   const candidateGraph = normalizeGraph({
     ...document.graph,
-    events: [...document.graph.events, command.event],
+    events: [...document.graph.events, commandSnapshot.event],
   });
   const boundIssues = inputBoundIssues(candidateGraph, document.receipts.length + 1);
   if (boundIssues.length > 0) return { _tag: "Rejected", issues: boundIssues };
   const validation = validateGraph(candidateGraph, registry);
   if (!validation.accepted) return { _tag: "Rejected", issues: validation.issues };
 
-  return {
+  const decision = immutableSnapshot<ApplyDecision>({
     _tag: "Apply",
     candidateGraph,
     nextRevision: document.revision + 1,
     receiptSeed: {
-      idempotencyKey: command.idempotencyKey,
+      idempotencyKey: commandSnapshot.idempotencyKey,
       commandDigest: digest,
       policyRegistryDigest: registry.digest,
-      eventId: command.event.id,
+      eventId: commandSnapshot.event.id,
       eventIndex: document.graph.events.length,
       priorEventChainDigest: document.eventChainDigest,
       priorRevision: document.revision,
       priorGraphDigest: document.graphDigest,
       resultRevision: document.revision + 1,
     },
-  };
+  });
+  issuedApplyDecisions.add(decision);
+  return decision;
 };
 
 export const completeAppend = (
   document: LocalWorkGraphDocument,
-  decision: Extract<AppendDecision, { readonly _tag: "Apply" }>,
+  decision: ApplyDecision,
   hash: HashFunction,
   registry: ResolvedPolicyRegistry,
 ): AppendCompletion => {
+  if (!issuedApplyDecisions.has(decision)) {
+    return {
+      ok: false,
+      issues: [
+        coherenceIssue(
+          "append_plan_authentication_failed",
+          "Append plan was not issued by this decision authority.",
+        ),
+      ],
+    };
+  }
   const coherence = validateDocumentCoherence(document, hash);
   const prefix = decision.candidateGraph.events.slice(0, document.graph.events.length);
   const completionIssues: Array<ValidationIssue> = [

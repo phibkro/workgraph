@@ -5,8 +5,10 @@ import {
   createGenesisDocument,
   decideAppend,
   documentDigest,
+  type AppendDecision,
   type AppendTransitionCommand,
   type HashFunction,
+  type Sha256Digest,
   validateDocumentCoherence,
   withinPublicDocumentBounds,
 } from "../src/core/local-command.ts";
@@ -279,7 +281,7 @@ describe("acceptance for design spec 0002 portable slices", () => {
         completed,
         duplicateIdentity,
         { ...command, event: event("event:other") },
-        sha256Text("other"),
+        commandDigest({ ...command, event: event("event:other") }, sha256Text),
         registry,
         sha256Text,
       ),
@@ -324,6 +326,52 @@ describe("acceptance for design spec 0002 portable slices", () => {
       nextRevision: 2,
     };
     expect(completeAppend(document, forgedDecision, sha256Text, registry).ok).toBeFalse();
+  });
+
+  test("decision rejects a supplied digest that does not authenticate the command", () => {
+    const document = createGenesisDocument(graph(), sha256Text);
+    const identity = validateDocumentCoherence(document, sha256Text).identity!;
+    const command: AppendTransitionCommand = {
+      schemaVersion: "workgraph.command.append-transition/v1alpha1",
+      idempotencyKey: "digest-custody",
+      expectedRevision: 0,
+      expectedGraphDigest: document.graphDigest,
+      expectedPolicyRegistryDigest: registry.digest,
+      event: event(),
+    };
+    const zeroDigest = `sha256:${"0".repeat(64)}` as Sha256Digest;
+    const decision = decideAppend(document, identity, command, zeroDigest, registry, sha256Text);
+    expect(decision).toMatchObject({
+      _tag: "Rejected",
+      issues: [{ code: "command_digest_authentication_failed" }],
+    });
+  });
+
+  test("completion rejects a structurally valid plan that no decision authority issued", () => {
+    const document = createGenesisDocument(graph(), sha256Text);
+    const appendedEvent = event();
+    const zeroDigest = `sha256:${"0".repeat(64)}` as Sha256Digest;
+    const forgedDecision: Extract<AppendDecision, { readonly _tag: "Apply" }> = {
+      _tag: "Apply",
+      candidateGraph: graph([appendedEvent]),
+      nextRevision: 1,
+      receiptSeed: {
+        idempotencyKey: "never-commanded",
+        commandDigest: zeroDigest,
+        policyRegistryDigest: registry.digest,
+        eventId: appendedEvent.id,
+        eventIndex: 0,
+        priorEventChainDigest: document.eventChainDigest,
+        priorRevision: 0,
+        priorGraphDigest: document.graphDigest,
+        resultRevision: 1,
+      },
+    };
+    const completion = completeAppend(document, forgedDecision, sha256Text, registry);
+    expect(completion).toMatchObject({
+      ok: false,
+      issues: [{ code: "append_plan_authentication_failed" }],
+    });
   });
 
   test("decision snapshots command aliases and counts the new receipt in public bounds", () => {
