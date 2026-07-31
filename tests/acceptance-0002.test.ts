@@ -8,12 +8,20 @@ import {
   type AppendTransitionCommand,
   type HashFunction,
   validateDocumentCoherence,
+  withinPublicDocumentBounds,
 } from "../src/core/local-command.ts";
+import { validateGraph } from "../src/core/graph.ts";
 import type { TransitionEvent, WorkGraph } from "../src/core/model.ts";
-import { attachPolicyRegistryDigest, resolvePolicyRegistry } from "../src/core/policy-registry.ts";
+import {
+  attachPolicyRegistryDigest,
+  authenticatePolicyRegistry,
+  resolvePolicyRegistry,
+  type ResolvedPolicyRegistry,
+} from "../src/core/policy-registry.ts";
 import {
   decodeAppendCommand,
   decodeLocalDocument,
+  decodePolicyDefinitions,
   decodeWorkGraph,
   encodeLocalDocument,
   sha256Text,
@@ -52,10 +60,7 @@ const event = (id = "event:one"): TransitionEvent => ({
 
 const resolution = resolvePolicyRegistry();
 if (!resolution.ok) throw new Error("generic policy registry rejected");
-const registry = attachPolicyRegistryDigest(
-  resolution,
-  sha256Text(resolution.digestScope).slice("sha256:".length),
-);
+const registry = attachPolicyRegistryDigest(resolution, sha256Text);
 const tagOf = (value: object): unknown => Reflect.get(value, "_tag");
 
 describe("acceptance for design spec 0002 portable slices", () => {
@@ -119,8 +124,106 @@ describe("acceptance for design spec 0002 portable slices", () => {
     expect(decodeWorkGraph(`${"[".repeat(66)}null${"]".repeat(66)}`).ok).toBeFalse();
   });
 
+  test("strict JSON rejects prototype custody and non-RFC whitespace", () => {
+    const validGraph = JSON.stringify(graph());
+    for (const key of ["__proto__", "constructor"]) {
+      expect(decodeWorkGraph(`{"${key}":${validGraph}}`).ok).toBeFalse();
+      expect(decodeLocalDocument(`{"${key}":{}}`).ok).toBeFalse();
+      expect(decodeAppendCommand(`{"${key}":{}}`).ok).toBeFalse();
+      expect(decodePolicyDefinitions(`{"${key}":{}}`).ok).toBeFalse();
+    }
+    expect(decodeWorkGraph(`\u00a0${validGraph}\u00a0`).ok).toBeFalse();
+  });
+
+  test("strict schemas reject empty canonical identifiers", () => {
+    expect(
+      decodeWorkGraph(
+        JSON.stringify({
+          ...graph(),
+          nodes: [{ id: "", kind: "work_item", title: "One" }],
+        }),
+      ).ok,
+    ).toBeFalse();
+    expect(
+      validateGraph(
+        {
+          ...graph(),
+          nodes: [{ id: "", kind: "work_item", title: "One" }],
+        },
+        registry,
+      ).accepted,
+    ).toBeFalse();
+    expect(
+      decodeWorkGraph(
+        JSON.stringify({
+          ...graph(),
+          events: [{ ...event(), id: "" }],
+        }),
+      ).ok,
+    ).toBeFalse();
+  });
+
+  test("the parser accepts a shallow graph inside every frozen public bound", () => {
+    const nodes = Array.from({ length: 75_000 }, (_, index) => ({
+      id: `node:${index}`,
+      kind: "work_item",
+      title: "x",
+    }));
+    expect(decodeWorkGraph(JSON.stringify({ ...graph(), nodes })).ok).toBeTrue();
+  });
+
+  test("policy custody is immutable, authenticated, and collision-free", () => {
+    const mutableRule = {
+      priorState: null,
+      requestedState: "active" as const,
+      transitionKind: "advance" as const,
+    };
+    const definitions = [
+      {
+        id: "x\u0000y",
+        version: "z",
+        authority: "administrative_assertion" as const,
+        evidenceCategory: "agent_assertion" as const,
+        rules: [mutableRule],
+      },
+      {
+        id: "x",
+        version: "y\u0000z",
+        authority: "administrative_assertion" as const,
+        evidenceCategory: "agent_assertion" as const,
+        rules: [
+          {
+            priorState: null,
+            requestedState: "achieved" as const,
+            transitionKind: "advance" as const,
+          },
+        ],
+      },
+    ];
+    const resolved = resolvePolicyRegistry(definitions);
+    expect(resolved.ok).toBeTrue();
+    if (!resolved.ok) return;
+    const scope = resolved.digestScope;
+    Reflect.set(mutableRule, "requestedState", "achieved");
+    expect(resolved.digestScope).toBe(scope);
+    const attached = attachPolicyRegistryDigest(resolved, sha256Text);
+    expect(Object.isFrozen(attached)).toBeTrue();
+    expect(Object.isFrozen(attached.definitions[0]?.rules[0])).toBeTrue();
+    expect(authenticatePolicyRegistry(attached, sha256Text)).toBeTrue();
+    expect(() => attachPolicyRegistryDigest(resolved, () => "sha256:bad")).toThrow();
+    const forged = {
+      ...attached,
+      digest: `sha256:${"0".repeat(64)}`,
+    } as ResolvedPolicyRegistry;
+    expect(authenticatePolicyRegistry(forged, sha256Text)).toBeFalse();
+  });
+
   test("genesis bytes, complete document digest, and decode are deterministic", () => {
-    const document = createGenesisDocument(graph(), sha256Text);
+    const input = graph();
+    const document = createGenesisDocument(input, sha256Text);
+    Reflect.set(input.nodes[0]!, "title", "Changed after genesis");
+    expect(document.graph.nodes[0]?.title).toBe("One");
+    expect(Object.isFrozen(document.graph.nodes[0])).toBeTrue();
     const encoded = encodeLocalDocument(document);
     const decoded = decodeLocalDocument(encoded);
     expect(decoded.ok).toBeTrue();
@@ -156,18 +259,21 @@ describe("acceptance for design spec 0002 portable slices", () => {
       event: event(),
     };
     const digest = commandDigest(command, sha256Text);
-    const decision = decideAppend(document, identity, command, digest, registry);
+    const decision = decideAppend(document, identity, command, digest, registry, sha256Text);
     expect(tagOf(decision)).toBe("Apply");
     if (!("candidateGraph" in decision)) return;
-    const completed = completeAppend(document, decision, sha256Text);
+    const completion = completeAppend(document, decision, sha256Text, registry);
+    expect(completion.ok).toBeTrue();
+    if (!completion.ok) return;
+    const completed = completion.document;
     expect(completed.graph.events).toEqual([event()]);
     expect(completed.revision).toBe(1);
     expect(validateDocumentCoherence(completed, sha256Text).accepted).toBeTrue();
 
     const duplicateIdentity = validateDocumentCoherence(completed, sha256Text).identity!;
-    expect(tagOf(decideAppend(completed, duplicateIdentity, command, digest, registry))).toBe(
-      "AlreadyApplied",
-    );
+    expect(
+      tagOf(decideAppend(completed, duplicateIdentity, command, digest, registry, sha256Text)),
+    ).toBe("AlreadyApplied");
     expect(
       decideAppend(
         completed,
@@ -175,7 +281,98 @@ describe("acceptance for design spec 0002 portable slices", () => {
         { ...command, event: event("event:other") },
         sha256Text("other"),
         registry,
+        sha256Text,
       ),
     ).toMatchObject({ _tag: "Conflict", code: "idempotency_key_reused" });
+  });
+
+  test("decision rejects incoherent documents, forged identities, and forged completion plans", () => {
+    const document = createGenesisDocument(graph(), sha256Text);
+    const identity = validateDocumentCoherence(document, sha256Text).identity!;
+    const command: AppendTransitionCommand = {
+      schemaVersion: "workgraph.command.append-transition/v1alpha1",
+      idempotencyKey: "custody",
+      expectedRevision: 0,
+      expectedGraphDigest: document.graphDigest,
+      expectedPolicyRegistryDigest: registry.digest,
+      event: event(),
+    };
+    const digest = commandDigest(command, sha256Text);
+    const incoherent = { ...document, revision: 1 };
+    expect(
+      tagOf(
+        decideAppend(
+          incoherent,
+          { ...identity, revision: 1 },
+          command,
+          digest,
+          registry,
+          sha256Text,
+        ),
+      ),
+    ).toBe("Rejected");
+    expect(
+      tagOf(
+        decideAppend(document, { ...identity, revision: 1 }, command, digest, registry, sha256Text),
+      ),
+    ).toBe("Rejected");
+
+    const decision = decideAppend(document, identity, command, digest, registry, sha256Text);
+    if (!("candidateGraph" in decision)) throw new Error("expected Apply");
+    const forgedDecision = {
+      ...decision,
+      nextRevision: 2,
+    };
+    expect(completeAppend(document, forgedDecision, sha256Text, registry).ok).toBeFalse();
+  });
+
+  test("decision snapshots command aliases and counts the new receipt in public bounds", () => {
+    expect(
+      withinPublicDocumentBounds({
+        nodes: 98_000,
+        edges: 0,
+        events: 1_000,
+        requests: 0,
+        receipts: 1_000,
+      }),
+    ).toBeTrue();
+    expect(
+      withinPublicDocumentBounds({
+        nodes: 98_001,
+        edges: 0,
+        events: 1_000,
+        requests: 0,
+        receipts: 1_000,
+      }),
+    ).toBeFalse();
+
+    const document = createGenesisDocument(graph(), sha256Text);
+    const identity = validateDocumentCoherence(document, sha256Text).identity!;
+    const mutableEvent = structuredClone(event()) as TransitionEvent;
+    const command: AppendTransitionCommand = {
+      schemaVersion: "workgraph.command.append-transition/v1alpha1",
+      idempotencyKey: "snapshot",
+      expectedRevision: 0,
+      expectedGraphDigest: document.graphDigest,
+      expectedPolicyRegistryDigest: registry.digest,
+      event: mutableEvent,
+    };
+    const decision = decideAppend(
+      document,
+      identity,
+      command,
+      commandDigest(command, sha256Text),
+      registry,
+      sha256Text,
+    );
+    if (!("candidateGraph" in decision)) throw new Error("expected Apply");
+    Reflect.set(mutableEvent, "id", "changed");
+    const basis = mutableEvent.basis[0]!;
+    Reflect.set(basis, "digest", "b".repeat(64));
+    expect(decision.candidateGraph.events[0]?.id).toBe("event:one");
+    expect(Reflect.get(decision.candidateGraph.events[0]!.basis[0]!, "digest")).toBe(
+      "a".repeat(64),
+    );
+    expect(Object.isFrozen(decision.candidateGraph.events[0]?.basis[0])).toBeTrue();
   });
 });

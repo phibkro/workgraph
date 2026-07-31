@@ -1,7 +1,7 @@
 import { validateGraph, type ValidationIssue } from "./graph.ts";
 import type { TransitionEvent, WorkGraph } from "./model.ts";
-import { normalizeGraph, stableStringify } from "./normalize.ts";
-import type { ResolvedPolicyRegistry } from "./policy-registry.ts";
+import { immutableSnapshot, normalizeGraph, stableStringify } from "./normalize.ts";
+import { authenticatePolicyRegistry, type ResolvedPolicyRegistry } from "./policy-registry.ts";
 
 export type Sha256Digest = `sha256:${string}`;
 export type HashFunction = (text: string) => Sha256Digest;
@@ -65,6 +65,22 @@ export type AppendDecision =
   | { readonly _tag: "AlreadyApplied"; readonly receipt: AppendReceipt }
   | { readonly _tag: "Conflict"; readonly code: string; readonly detail: string }
   | { readonly _tag: "Rejected"; readonly issues: ReadonlyArray<ValidationIssue> };
+
+export type AppendCompletion =
+  | { readonly ok: true; readonly document: LocalWorkGraphDocument }
+  | { readonly ok: false; readonly issues: ReadonlyArray<ValidationIssue> };
+
+export interface DocumentCollectionCounts {
+  readonly nodes: number;
+  readonly edges: number;
+  readonly events: number;
+  readonly requests: number;
+  readonly receipts: number;
+}
+
+export const withinPublicDocumentBounds = (counts: DocumentCollectionCounts): boolean =>
+  counts.events <= 1_000 &&
+  counts.nodes + counts.edges + counts.events + counts.requests + counts.receipts <= 100_000;
 
 export interface CoherenceResult {
   readonly accepted: boolean;
@@ -172,7 +188,7 @@ export const createGenesisDocument = (
     chainDigest = nextEventChainDigest(chainDigest, index, eventDigest(event, hash), hash);
   }
   const graphDigest = localGraphDigest(staticDigest, chainDigest, normalized.events.length, hash);
-  return {
+  return immutableSnapshot({
     schemaVersion: "workgraph.local/v1alpha1",
     revision: 0,
     graphDigest,
@@ -185,7 +201,7 @@ export const createGenesisDocument = (
     },
     graph: normalized,
     receipts: [],
-  };
+  });
 };
 
 const coherenceIssue = (code: string, detail: string): ValidationIssue => ({
@@ -298,10 +314,17 @@ export const validateDocumentCoherence = (
 export const commandDigest = (command: AppendTransitionCommand, hash: HashFunction): Sha256Digest =>
   hash(stableStringify(command));
 
-const inputBoundIssues = (graph: WorkGraph): ReadonlyArray<ValidationIssue> => {
-  const entries =
-    graph.nodes.length + graph.edges.length + graph.events.length + graph.requests.length;
-  return graph.events.length > 1_000 || entries > 100_000
+const inputBoundIssues = (
+  graph: WorkGraph,
+  receiptCount: number,
+): ReadonlyArray<ValidationIssue> => {
+  return !withinPublicDocumentBounds({
+    nodes: graph.nodes.length,
+    edges: graph.edges.length,
+    events: graph.events.length,
+    requests: graph.requests.length,
+    receipts: receiptCount,
+  })
     ? [
         {
           code: "input_bound_exceeded",
@@ -318,7 +341,28 @@ export const decideAppend = (
   command: AppendTransitionCommand,
   digest: Sha256Digest,
   registry: ResolvedPolicyRegistry,
+  hash: HashFunction,
 ): AppendDecision => {
+  const coherence = validateDocumentCoherence(document, hash);
+  if (!coherence.accepted || coherence.identity === undefined) {
+    return { _tag: "Rejected", issues: coherence.issues };
+  }
+  if (
+    identity.revision !== coherence.identity.revision ||
+    identity.graphDigest !== coherence.identity.graphDigest ||
+    identity.eventChainDigest !== coherence.identity.eventChainDigest ||
+    identity.documentDigest !== coherence.identity.documentDigest
+  ) {
+    return {
+      _tag: "Rejected",
+      issues: [
+        coherenceIssue(
+          "identity_authentication_failed",
+          "Supplied identity does not match the coherent document.",
+        ),
+      ],
+    };
+  }
   const receipt = document.receipts.find(
     (candidate) => candidate.idempotencyKey === command.idempotencyKey,
   );
@@ -336,6 +380,13 @@ export const decideAppend = (
       _tag: "Conflict",
       code: "policy_registry_changed",
       detail: "The resolved policy registry differs from the command.",
+    };
+  }
+  if (!authenticatePolicyRegistry(registry, hash)) {
+    return {
+      _tag: "Conflict",
+      code: "policy_registry_invalid",
+      detail: "The resolved policy registry does not authenticate.",
     };
   }
   if (command.expectedRevision !== identity.revision) {
@@ -359,11 +410,11 @@ export const decideAppend = (
       detail: "The event identifier already exists.",
     };
   }
-  const candidateGraph: WorkGraph = {
+  const candidateGraph = normalizeGraph({
     ...document.graph,
     events: [...document.graph.events, command.event],
-  };
-  const boundIssues = inputBoundIssues(candidateGraph);
+  });
+  const boundIssues = inputBoundIssues(candidateGraph, document.receipts.length + 1);
   if (boundIssues.length > 0) return { _tag: "Rejected", issues: boundIssues };
   const validation = validateGraph(candidateGraph, registry);
   if (!validation.accepted) return { _tag: "Rejected", issues: validation.issues };
@@ -390,7 +441,37 @@ export const completeAppend = (
   document: LocalWorkGraphDocument,
   decision: Extract<AppendDecision, { readonly _tag: "Apply" }>,
   hash: HashFunction,
-): LocalWorkGraphDocument => {
+  registry: ResolvedPolicyRegistry,
+): AppendCompletion => {
+  const coherence = validateDocumentCoherence(document, hash);
+  const prefix = decision.candidateGraph.events.slice(0, document.graph.events.length);
+  const completionIssues: Array<ValidationIssue> = [
+    ...coherence.issues,
+    ...inputBoundIssues(decision.candidateGraph, document.receipts.length + 1),
+  ];
+  if (
+    !authenticatePolicyRegistry(registry, hash) ||
+    decision.nextRevision !== document.revision + 1 ||
+    decision.receiptSeed.priorRevision !== document.revision ||
+    decision.receiptSeed.resultRevision !== decision.nextRevision ||
+    decision.receiptSeed.eventIndex !== document.graph.events.length ||
+    decision.receiptSeed.priorGraphDigest !== document.graphDigest ||
+    decision.receiptSeed.priorEventChainDigest !== document.eventChainDigest ||
+    decision.receiptSeed.policyRegistryDigest !== registry.digest ||
+    decision.candidateGraph.events.length !== document.graph.events.length + 1 ||
+    stableStringify(prefix) !== stableStringify(document.graph.events)
+  ) {
+    completionIssues.push(
+      coherenceIssue(
+        "append_plan_authentication_failed",
+        "Append plan is not bound to the document.",
+      ),
+    );
+  }
+  const candidateValidation = validateGraph(decision.candidateGraph, registry);
+  completionIssues.push(...candidateValidation.issues);
+  if (completionIssues.length > 0) return { ok: false, issues: completionIssues };
+
   const appended = decision.candidateGraph.events.at(-1)!;
   const appendedDigest = eventDigest(appended, hash);
   const resultChainDigest = nextEventChainDigest(
@@ -411,12 +492,16 @@ export const completeAppend = (
     resultEventChainDigest: resultChainDigest,
     resultGraphDigest,
   };
-  return {
+  const completed = immutableSnapshot<LocalWorkGraphDocument>({
     ...document,
     revision: decision.nextRevision,
     graphDigest: resultGraphDigest,
     eventChainDigest: resultChainDigest,
     graph: decision.candidateGraph,
     receipts: [...document.receipts, receipt],
-  };
+  });
+  const completedCoherence = validateDocumentCoherence(completed, hash);
+  return completedCoherence.accepted
+    ? { ok: true, document: completed }
+    : { ok: false, issues: completedCoherence.issues };
 };

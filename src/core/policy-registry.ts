@@ -5,7 +5,7 @@ import {
   type LifecycleState,
   type TransitionEvent,
 } from "./model.ts";
-import { stableStringify } from "./normalize.ts";
+import { immutableSnapshot, stableStringify } from "./normalize.ts";
 
 export interface TransitionPolicyRule {
   readonly priorState: LifecycleState | null;
@@ -32,7 +32,6 @@ export interface PolicyRegistry {
     | "workgraph.policy-registry/v1alpha1"
     | "workgraph.resolved-policy-registry/v1alpha1";
   readonly definitions: ReadonlyArray<TransitionPolicyDefinition>;
-  readonly byIdentity: ReadonlyMap<string, TransitionPolicyDefinition>;
 }
 
 export interface ResolvedPolicyRegistry extends PolicyRegistry {
@@ -48,6 +47,8 @@ export interface RegistryIssue {
 export type RegistryResolution =
   | { readonly ok: true; readonly registry: PolicyRegistry; readonly digestScope: string }
   | { readonly ok: false; readonly issues: ReadonlyArray<RegistryIssue> };
+
+export type RegistryHashFunction = (text: string) => `sha256:${string}`;
 
 const ADMINISTRATIVE_ADVANCES: ReadonlyArray<TransitionPolicyRule> = [
   { priorState: null, requestedState: "active", transitionKind: "advance" },
@@ -75,40 +76,41 @@ const machinePolicy = (id: string, acceptanceContract: string): TransitionPolicy
   ],
 });
 
-export const GENERIC_TRANSITION_POLICIES: ReadonlyArray<TransitionPolicyDefinition> = [
-  {
-    id: "workgraph.policy.administrative",
-    version: "1",
-    authority: "administrative_assertion",
-    evidenceCategory: "agent_assertion",
-    rules: [...ADMINISTRATIVE_ADVANCES, ...ADMINISTRATIVE_CORRECTIONS],
-  },
-  {
-    id: "workgraph.policy.administrative-assumption",
-    version: "1",
-    authority: "administrative_assertion",
-    evidenceCategory: "assumption",
-    rules: ADMINISTRATIVE_ADVANCES,
-  },
-  {
-    id: "workgraph.policy.human-approval",
-    version: "1",
-    authority: "human_approval",
-    evidenceCategory: "human_approved_assertion",
-    rules: [{ priorState: null, requestedState: "achieved", transitionKind: "advance" }],
-  },
-  {
-    id: "workgraph.policy.imported-observation",
-    version: "1",
-    authority: "imported_observation",
-    evidenceCategory: "external_observation",
-    rules: [
-      { priorState: null, requestedState: "active", transitionKind: "advance" },
-      { priorState: null, requestedState: "achieved", transitionKind: "advance" },
-    ],
-  },
-  machinePolicy("workgraph.policy.machine-check", "workgraph.policy.machine-check/v1"),
-];
+export const GENERIC_TRANSITION_POLICIES: ReadonlyArray<TransitionPolicyDefinition> =
+  immutableSnapshot([
+    {
+      id: "workgraph.policy.administrative",
+      version: "1",
+      authority: "administrative_assertion",
+      evidenceCategory: "agent_assertion",
+      rules: [...ADMINISTRATIVE_ADVANCES, ...ADMINISTRATIVE_CORRECTIONS],
+    },
+    {
+      id: "workgraph.policy.administrative-assumption",
+      version: "1",
+      authority: "administrative_assertion",
+      evidenceCategory: "assumption",
+      rules: ADMINISTRATIVE_ADVANCES,
+    },
+    {
+      id: "workgraph.policy.human-approval",
+      version: "1",
+      authority: "human_approval",
+      evidenceCategory: "human_approved_assertion",
+      rules: [{ priorState: null, requestedState: "achieved", transitionKind: "advance" }],
+    },
+    {
+      id: "workgraph.policy.imported-observation",
+      version: "1",
+      authority: "imported_observation",
+      evidenceCategory: "external_observation",
+      rules: [
+        { priorState: null, requestedState: "active", transitionKind: "advance" },
+        { priorState: null, requestedState: "achieved", transitionKind: "advance" },
+      ],
+    },
+    machinePolicy("workgraph.policy.machine-check", "workgraph.policy.machine-check/v1"),
+  ]);
 
 const AUTHORITIES: ReadonlySet<string> = new Set([
   "machine_policy",
@@ -132,6 +134,11 @@ const byCodeUnit = (left: string, right: string): number =>
 const ruleTuple = (rule: TransitionPolicyRule): string =>
   `${rule.priorState ?? ""}\u0000${rule.requestedState}\u0000${rule.transitionKind}`;
 
+const sameIdentity = (
+  left: Pick<TransitionPolicyDefinition, "id" | "version">,
+  right: Pick<TransitionPolicyDefinition, "id" | "version">,
+): boolean => left.id === right.id && left.version === right.version;
+
 const normalizeDefinition = (
   definition: TransitionPolicyDefinition,
 ): TransitionPolicyDefinition => ({
@@ -139,34 +146,38 @@ const normalizeDefinition = (
   version: definition.version,
   authority: definition.authority,
   evidenceCategory: definition.evidenceCategory,
-  rules: definition.rules.toSorted((left, right) => byCodeUnit(ruleTuple(left), ruleTuple(right))),
+  rules: definition.rules
+    .map((rule) => ({
+      priorState: rule.priorState,
+      requestedState: rule.requestedState,
+      transitionKind: rule.transitionKind,
+    }))
+    .toSorted((left, right) => byCodeUnit(ruleTuple(left), ruleTuple(right))),
   ...(definition.acceptanceContract === undefined
     ? {}
     : { acceptanceContract: definition.acceptanceContract }),
 });
 
-export const resolvePolicyRegistry = (
-  optionalDefinitions: ReadonlyArray<TransitionPolicyDefinition> = [],
+const normalizeCompleteRegistry = (
+  definitions: ReadonlyArray<TransitionPolicyDefinition>,
 ): RegistryResolution => {
-  const definitions = [...GENERIC_TRANSITION_POLICIES, ...optionalDefinitions];
   const issues: Array<RegistryIssue> = [];
-  const identities = new Set<string>();
+  const identities: Array<Pick<TransitionPolicyDefinition, "id" | "version">> = [];
 
   for (const definition of definitions) {
-    const identity = `${definition.id}\u0000${definition.version}`;
     if (definition.id.length === 0 || definition.version.length === 0) {
       issues.push({
         code: "empty_policy_identity",
         detail: "Policy identity fields are required.",
       });
     }
-    if (identities.has(identity)) {
+    if (identities.some((identity) => sameIdentity(identity, definition))) {
       issues.push({
         code: "duplicate_policy_identity",
         detail: `Duplicate policy ${definition.id}@${definition.version}.`,
       });
     }
-    identities.add(identity);
+    identities.push({ id: definition.id, version: definition.version });
     if (!AUTHORITIES.has(definition.authority)) {
       issues.push({ code: "unknown_policy_authority", detail: definition.authority });
     }
@@ -201,18 +212,14 @@ export const resolvePolicyRegistry = (
 
   if (issues.length > 0) return { ok: false, issues };
 
-  const normalized = definitions
-    .map(normalizeDefinition)
-    .toSorted((left, right) =>
-      byCodeUnit(`${left.id}\u0000${left.version}`, `${right.id}\u0000${right.version}`),
-    );
-  const registry: PolicyRegistry = {
+  const normalized = definitions.map(normalizeDefinition).toSorted((left, right) => {
+    const idOrder = byCodeUnit(left.id, right.id);
+    return idOrder === 0 ? byCodeUnit(left.version, right.version) : idOrder;
+  });
+  const registry = immutableSnapshot<PolicyRegistry>({
     schemaVersion: "workgraph.policy-registry/v1alpha1",
     definitions: normalized,
-    byIdentity: new Map(
-      normalized.map((definition) => [`${definition.id}\u0000${definition.version}`, definition]),
-    ),
-  };
+  });
   return {
     ok: true,
     registry,
@@ -230,17 +237,49 @@ export const resolvePolicyRegistry = (
   };
 };
 
+export const resolvePolicyRegistry = (
+  optionalDefinitions: ReadonlyArray<TransitionPolicyDefinition> = [],
+): RegistryResolution =>
+  normalizeCompleteRegistry([...GENERIC_TRANSITION_POLICIES, ...optionalDefinitions]);
+
 export const attachPolicyRegistryDigest = (
   resolution: Extract<RegistryResolution, { readonly ok: true }>,
-  hexDigest: string,
-): ResolvedPolicyRegistry => ({
-  ...resolution.registry,
-  schemaVersion: "workgraph.resolved-policy-registry/v1alpha1",
-  digest: `sha256:${hexDigest}`,
-});
+  hash: RegistryHashFunction,
+): ResolvedPolicyRegistry => {
+  const digest = hash(resolution.digestScope);
+  if (!/^sha256:[0-9a-f]{64}$/u.test(digest)) {
+    throw new TypeError("Registry hash function returned an invalid SHA-256 digest.");
+  }
+  return immutableSnapshot({
+    ...resolution.registry,
+    schemaVersion: "workgraph.resolved-policy-registry/v1alpha1",
+    digest,
+  });
+};
+
+export const authenticatePolicyRegistry = (
+  registry: ResolvedPolicyRegistry,
+  hash: RegistryHashFunction,
+): boolean => {
+  const resolution = normalizeCompleteRegistry(registry.definitions);
+  if (!resolution.ok) return false;
+  for (const builtin of GENERIC_TRANSITION_POLICIES) {
+    const actual = resolution.registry.definitions.find((definition) =>
+      sameIdentity(definition, builtin),
+    );
+    if (
+      actual === undefined ||
+      stableStringify(normalizeDefinition(actual)) !== stableStringify(normalizeDefinition(builtin))
+    ) {
+      return false;
+    }
+  }
+  return hash(resolution.digestScope) === registry.digest;
+};
 
 export const findPolicy = (
   registry: PolicyRegistry,
   id: string,
   version: string,
-): TransitionPolicyDefinition | undefined => registry.byIdentity.get(`${id}\u0000${version}`);
+): TransitionPolicyDefinition | undefined =>
+  registry.definitions.find((definition) => definition.id === id && definition.version === version);

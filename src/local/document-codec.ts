@@ -20,7 +20,7 @@ import {
   type WorkEdge,
   type WorkNode,
 } from "../core/model.ts";
-import { stableStringify } from "../core/normalize.ts";
+import { immutableSnapshot, stableStringify } from "../core/normalize.ts";
 import type {
   PolicyDefinitionsDocument,
   TransitionPolicyDefinition,
@@ -45,7 +45,6 @@ const issue = (path: string, code: string, detail: string): DecodeIssue => ({
 class StrictJsonParser {
   readonly #source: string;
   #index = 0;
-  #values = 0;
 
   constructor(source: string) {
     this.#source = source;
@@ -61,15 +60,18 @@ class StrictJsonParser {
   }
 
   #space(): void {
-    while (/\s/u.test(this.#source[this.#index] ?? "")) this.#index += 1;
+    while (
+      this.#source[this.#index] === " " ||
+      this.#source[this.#index] === "\t" ||
+      this.#source[this.#index] === "\n" ||
+      this.#source[this.#index] === "\r"
+    ) {
+      this.#index += 1;
+    }
   }
 
   #value(depth: number, path: string): unknown {
     if (depth > 64) throw issue(path, "depth_exceeded", "JSON nesting exceeds 64 levels.");
-    this.#values += 1;
-    if (this.#values > 300_000) {
-      throw issue(path, "value_count_exceeded", "JSON contains too many values.");
-    }
     this.#space();
     const char = this.#source[this.#index];
     if (char === "{") return this.#object(depth + 1, path);
@@ -126,7 +128,7 @@ class StrictJsonParser {
 
   #object(depth: number, path: string): Readonly<Record<string, unknown>> {
     this.#index += 1;
-    const value: Record<string, unknown> = {};
+    const value = Object.create(null) as Record<string, unknown>;
     const keys = new Set<string>();
     this.#space();
     if (this.#source[this.#index] === "}") {
@@ -146,7 +148,12 @@ class StrictJsonParser {
         throw issue(`${path}.${key}`, "invalid_object", "Missing colon after object key.");
       }
       this.#index += 1;
-      value[key] = this.#value(depth, `${path}.${key}`);
+      Object.defineProperty(value, key, {
+        value: this.#value(depth, `${path}.${key}`),
+        enumerable: true,
+        configurable: false,
+        writable: false,
+      });
       this.#space();
       const char = this.#source[this.#index];
       if (char === "}") {
@@ -204,6 +211,8 @@ const parseJson = (source: string): DecodeResult<unknown> => {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
 const isString = (value: unknown): value is string => typeof value === "string";
+const isIdentifier = (value: unknown): value is string =>
+  typeof value === "string" && new TextEncoder().encode(value).length > 0;
 const isSafeInteger = (value: unknown): value is number =>
   typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 const isDigest = (value: unknown): value is Sha256Digest =>
@@ -218,7 +227,8 @@ const exactKeys = (
 ): boolean => {
   const allowed = new Set([...required, ...optional]);
   return (
-    required.every((key) => key in value) && Object.keys(value).every((key) => allowed.has(key))
+    required.every((key) => Object.hasOwn(value, key)) &&
+    Object.keys(value).every((key) => allowed.has(key))
   );
 };
 
@@ -251,10 +261,10 @@ const isExactSubject = (value: unknown): value is ExactSubjectReference => {
       ["path", "mutableContext"],
     ) &&
     value.kind === "git_commit" &&
-    isString(value.repository) &&
+    isIdentifier(value.repository) &&
     (value.objectFormat === "sha1" || value.objectFormat === "sha256") &&
-    isString(value.objectId) &&
-    isString(value.observedBy) &&
+    isIdentifier(value.objectId) &&
+    isIdentifier(value.observedBy) &&
     (value.path === undefined || isString(value.path)) &&
     (value.mutableContext === undefined || isString(value.mutableContext))
   );
@@ -275,9 +285,9 @@ const isHumanApproval = (value: unknown): value is HumanApprovalReference =>
     "machineChecked",
   ]) &&
   value.kind === "human_approval" &&
-  isString(value.actor) &&
+  isIdentifier(value.actor) &&
   isEnum(value.authentication, ["unverified", "provider_authenticated", "signed"]) &&
-  isString(value.authorityScope) &&
+  isIdentifier(value.authorityScope) &&
   Array.isArray(value.subjects) &&
   value.subjects.every(isExactSubject) &&
   isEnum(value.approvedTransition, LIFECYCLE_STATES) &&
@@ -302,13 +312,13 @@ const isMachineCheck = (value: unknown): value is MachineCheckReference =>
     "observedAt",
   ]) &&
   value.kind === "machine_check" &&
-  isString(value.checker) &&
-  isString(value.checkerVersion) &&
+  isIdentifier(value.checker) &&
+  isIdentifier(value.checkerVersion) &&
   Array.isArray(value.subjects) &&
   value.subjects.every(isExactSubject) &&
-  isString(value.policy) &&
-  isString(value.operation) &&
-  isString(value.environment) &&
+  isIdentifier(value.policy) &&
+  isIdentifier(value.operation) &&
+  isIdentifier(value.environment) &&
   isEnum(value.result, ["passed", "failed", "indeterminate"]) &&
   typeof value.exitCode === "number" &&
   Number.isSafeInteger(value.exitCode) &&
@@ -319,7 +329,7 @@ const isBasis = (value: unknown): value is BasisReference => {
   if (isExactSubject(value) || isMachineCheck(value) || isHumanApproval(value)) return true;
   if (!isRecord(value) || !isString(value.kind)) return false;
   if (value.kind === "graph_event") {
-    return exactKeys(value, ["kind", "eventId"]) && isString(value.eventId);
+    return exactKeys(value, ["kind", "eventId"]) && isIdentifier(value.eventId);
   }
   if (value.kind === "external_record") {
     return (
@@ -328,9 +338,9 @@ const isBasis = (value: unknown): value is BasisReference => {
         ["kind", "provider", "project", "recordId", "observedAt", "interpretation"],
         ["observedVersion"],
       ) &&
-      isString(value.provider) &&
-      isString(value.project) &&
-      isString(value.recordId) &&
+      isIdentifier(value.provider) &&
+      isIdentifier(value.project) &&
+      isIdentifier(value.recordId) &&
       isString(value.observedAt) &&
       isString(value.interpretation) &&
       (value.observedVersion === undefined || isString(value.observedVersion))
@@ -360,12 +370,12 @@ const isTransition = (value: unknown): value is TransitionEvent =>
     ],
     ["supersedes", "fulfillsRequest"],
   ) &&
-  isString(value.id) &&
-  isString(value.subjectId) &&
+  isIdentifier(value.id) &&
+  isIdentifier(value.subjectId) &&
   (value.priorState === null || isEnum(value.priorState, LIFECYCLE_STATES)) &&
   isEnum(value.requestedState, LIFECYCLE_STATES) &&
   isEnum(value.transitionKind, ["advance", "reopen", "correct"]) &&
-  isString(value.actor) &&
+  isIdentifier(value.actor) &&
   isEnum(value.authority, [
     "machine_policy",
     "human_approval",
@@ -382,8 +392,8 @@ const isTransition = (value: unknown): value is TransitionEvent =>
   Array.isArray(value.basis) &&
   value.basis.length > 0 &&
   value.basis.every(isBasis) &&
-  isString(value.policy) &&
-  isString(value.policyVersion) &&
+  isIdentifier(value.policy) &&
+  isIdentifier(value.policyVersion) &&
   isString(value.rationale) &&
   isString(value.observedAt) &&
   (value.supersedes === undefined || isString(value.supersedes)) &&
@@ -392,7 +402,7 @@ const isTransition = (value: unknown): value is TransitionEvent =>
 const isNode = (value: unknown): value is WorkNode =>
   isRecord(value) &&
   exactKeys(value, ["id", "kind", "title"], ["exactSubject", "evidenceRole", "attributes"]) &&
-  isString(value.id) &&
+  isIdentifier(value.id) &&
   isEnum(value.kind, NODE_KINDS) &&
   isString(value.title) &&
   (value.exactSubject === undefined || isExactSubject(value.exactSubject)) &&
@@ -407,10 +417,10 @@ const isNode = (value: unknown): value is WorkNode =>
 const isEdge = (value: unknown): value is WorkEdge =>
   isRecord(value) &&
   exactKeys(value, ["id", "kind", "from", "to"], ["attributes"]) &&
-  isString(value.id) &&
+  isIdentifier(value.id) &&
   isEnum(value.kind, EDGE_KINDS) &&
-  isString(value.from) &&
-  isString(value.to) &&
+  isIdentifier(value.from) &&
+  isIdentifier(value.to) &&
   (value.attributes === undefined || isAttributes(value.attributes));
 
 const isGraph = (value: unknown): value is WorkGraph =>
@@ -435,11 +445,11 @@ const isGraph = (value: unknown): value is WorkGraph =>
         "declaredInRepository",
         "rationale",
       ]) &&
-      isString(request.id) &&
-      isString(request.subjectId) &&
+      isIdentifier(request.id) &&
+      isIdentifier(request.subjectId) &&
       isEnum(request.requestedState, LIFECYCLE_STATES) &&
-      isString(request.declaredBy) &&
-      isString(request.declaredInRepository) &&
+      isIdentifier(request.declaredBy) &&
+      isIdentifier(request.declaredInRepository) &&
       isString(request.rationale),
   );
 
@@ -459,11 +469,11 @@ const isReceipt = (value: unknown): boolean =>
     "resultRevision",
     "resultGraphDigest",
   ]) &&
-  isString(value.idempotencyKey) &&
+  isIdentifier(value.idempotencyKey) &&
   new TextEncoder().encode(value.idempotencyKey).length <= 256 &&
   isDigest(value.commandDigest) &&
   isDigest(value.policyRegistryDigest) &&
-  isString(value.eventId) &&
+  isIdentifier(value.eventId) &&
   isSafeInteger(value.eventIndex) &&
   isDigest(value.eventDigest) &&
   isDigest(value.priorEventChainDigest) &&
@@ -481,7 +491,7 @@ const decodeAs = <T>(
   const parsed = parseJson(source);
   if (!parsed.ok) return parsed;
   return guard(parsed.value)
-    ? { ok: true, value: parsed.value }
+    ? { ok: true, value: immutableSnapshot(parsed.value) }
     : {
         ok: false,
         issues: [issue("$", code, "Value does not match the exact schema.")],
@@ -573,8 +583,7 @@ export const decodeAppendCommand = (source: string): DecodeResult<AppendTransiti
         "event",
       ]) &&
       value.schemaVersion === "workgraph.command.append-transition/v1alpha1" &&
-      isString(value.idempotencyKey) &&
-      value.idempotencyKey.length > 0 &&
+      isIdentifier(value.idempotencyKey) &&
       new TextEncoder().encode(value.idempotencyKey).length <= 256 &&
       isSafeInteger(value.expectedRevision) &&
       isDigest(value.expectedGraphDigest) &&
@@ -590,8 +599,8 @@ const isPolicyDefinition = (value: unknown): value is TransitionPolicyDefinition
     ["id", "version", "authority", "evidenceCategory", "rules"],
     ["acceptanceContract"],
   ) &&
-  isString(value.id) &&
-  isString(value.version) &&
+  isIdentifier(value.id) &&
+  isIdentifier(value.version) &&
   isEnum(value.authority, [
     "machine_policy",
     "human_approval",

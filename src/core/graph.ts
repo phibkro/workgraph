@@ -230,6 +230,22 @@ export const validateGraph = (graph: WorkGraph, registry: PolicyRegistry): Valid
   for (const id of duplicates(graph.requests.map((request) => request.id))) {
     issues.push({ code: "duplicate_request", subject: id, detail: `Duplicate request ${id}.` });
   }
+  for (const [kind, values] of [
+    ["node", graph.nodes],
+    ["edge", graph.edges],
+    ["event", graph.events],
+    ["request", graph.requests],
+  ] as const) {
+    for (const value of values) {
+      if (value.id.length === 0) {
+        issues.push({
+          code: `empty_${kind}_id`,
+          subject: "$",
+          detail: `Canonical ${kind} identifiers must not be empty.`,
+        });
+      }
+    }
+  }
 
   for (const node of graph.nodes) {
     if (node.exactSubject !== undefined) {
