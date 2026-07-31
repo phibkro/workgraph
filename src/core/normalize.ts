@@ -8,16 +8,32 @@ import type { WorkGraph } from "./model.ts";
 const byCodeUnit = (left: string, right: string): number =>
   left < right ? -1 : left > right ? 1 : 0;
 
-export const normalizeGraph = (graph: WorkGraph): WorkGraph => ({
-  schemaVersion: graph.schemaVersion,
-  nodes: graph.nodes.toSorted((a, b) => byCodeUnit(a.id, b.id)),
-  edges: graph.edges.toSorted((a, b) => byCodeUnit(a.id, b.id)),
-  // Event array order is canonical append order. `observedAt` records when
-  // evidence was observed; sorting by it would let a late or corrected clock
-  // rewrite lifecycle causality.
-  events: [...graph.events],
-  requests: graph.requests.toSorted((a, b) => byCodeUnit(a.id, b.id)),
-});
+const immutableVisit = (entry: unknown): unknown => {
+  if (Array.isArray(entry)) return Object.freeze(entry.map(immutableVisit));
+  if (entry !== null && typeof entry === "object") {
+    const record = entry as Readonly<Record<string, unknown>>;
+    return Object.freeze(
+      Object.fromEntries(Object.keys(record).map((key) => [key, immutableVisit(record[key])])),
+    );
+  }
+  return entry;
+};
+
+export const immutableSnapshot = <T>(value: T): T => immutableVisit(value) as T;
+
+export const normalizeGraph = (graph: WorkGraph): WorkGraph => {
+  const snapshot = immutableSnapshot(graph);
+  return immutableSnapshot({
+    schemaVersion: snapshot.schemaVersion,
+    nodes: snapshot.nodes.toSorted((a, b) => byCodeUnit(a.id, b.id)),
+    edges: snapshot.edges.toSorted((a, b) => byCodeUnit(a.id, b.id)),
+    // Event array order is canonical append order. `observedAt` records when
+    // evidence was observed; sorting by it would let a late or corrected clock
+    // rewrite lifecycle causality.
+    events: [...snapshot.events],
+    requests: snapshot.requests.toSorted((a, b) => byCodeUnit(a.id, b.id)),
+  });
+};
 
 const stableValue = (value: unknown): unknown => {
   if (Array.isArray(value)) return value.map(stableValue);

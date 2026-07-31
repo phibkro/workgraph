@@ -6,6 +6,7 @@ import { normalizeGraph, stableStringify } from "../core/normalize.ts";
 import { PROJECTION_GENERATOR, projectAll } from "../core/projections.ts";
 import type { ProjectionFile } from "../core/projections.ts";
 import { coverageManifest } from "../acceptance/manifest.ts";
+import { policyRegistry0001 } from "../fixture/policy-registry-0001.ts";
 import { tracerFixture } from "../fixture/tracer-0001.ts";
 
 /**
@@ -51,7 +52,7 @@ export const buildViews: Effect.Effect<BuiltViews, JourneyFailure, Sha256> = Eff
     const sha = yield* Sha256;
     const normalized = normalizeGraph(tracerFixture);
 
-    const validation = validateGraph(normalized);
+    const validation = validateGraph(normalized, policyRegistry0001);
     if (!validation.accepted) {
       return yield* Effect.fail(
         new JourneyFailure(
@@ -63,8 +64,8 @@ export const buildViews: Effect.Effect<BuiltViews, JourneyFailure, Sha256> = Eff
 
     const canonicalJson = stableStringify(normalized);
     const canonicalDigest = yield* sha.hex(canonicalJson);
-    const derivation = deriveRoadmap(normalized);
-    const outcome = projectAll(normalized, derivation, canonicalDigest);
+    const derivation = deriveRoadmap(normalized, policyRegistry0001);
+    const outcome = projectAll(normalized, derivation, canonicalDigest, policyRegistry0001);
     if (!outcome.ok) {
       return yield* Effect.fail(
         new JourneyFailure("projection_failed", [outcome.failure.code, outcome.failure.detail]),

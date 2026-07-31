@@ -5,6 +5,7 @@ import type {
   TransitionEvent,
   WorkGraph,
 } from "./model.ts";
+import type { PolicyRegistry } from "./policy-registry.ts";
 import type { Derivation, DerivedStatus } from "./derive.ts";
 import { effectiveEvents, validateGraph, validatedTransitionEvidence } from "./graph.ts";
 import { stableStringify } from "./normalize.ts";
@@ -91,8 +92,9 @@ const basisSummary = (reference: BasisReference): Readonly<Record<string, unknow
 const explainEvent = (
   graph: WorkGraph,
   event: TransitionEvent,
+  registry: PolicyRegistry,
 ): Readonly<Record<string, unknown>> => {
-  const evidence = validatedTransitionEvidence(graph, event);
+  const evidence = validatedTransitionEvidence(graph, event, registry);
   return {
     id: event.id,
     subjectId: event.subjectId,
@@ -126,10 +128,11 @@ interface TransitionEvidenceSummary {
 
 const effectiveEvidenceBySubject = (
   graph: WorkGraph,
+  registry: PolicyRegistry,
 ): ReadonlyMap<string, TransitionEvidenceSummary> => {
   const summaries = new Map<string, TransitionEvidenceSummary>();
   for (const event of effectiveEvents(graph)) {
-    const evidence = validatedTransitionEvidence(graph, event);
+    const evidence = validatedTransitionEvidence(graph, event, registry);
     if (evidence === undefined) continue;
     summaries.set(event.subjectId, {
       eventId: event.id,
@@ -160,6 +163,7 @@ interface ScheduleEntry {
 const dependencySchedule = (
   graph: WorkGraph,
   statusById: ReadonlyMap<string, DerivedStatus>,
+  registry: PolicyRegistry,
 ): { readonly ok: true; readonly entries: ReadonlyArray<ScheduleEntry> } | ProjectionFailure => {
   const requiresEdges = graph.edges.filter((edge) => edge.kind === "requires");
   const schedulingEdges = requiresEdges.filter((edge) => edge.attributes?.["optional"] !== true);
@@ -193,7 +197,7 @@ const dependencySchedule = (
   }
 
   const nodesById = new Map(graph.nodes.map((node) => [node.id, node]));
-  const evidenceBySubject = effectiveEvidenceBySubject(graph);
+  const evidenceBySubject = effectiveEvidenceBySubject(graph, registry);
   const entries = participantIds.map((id): ScheduleEntry => {
     const node = nodesById.get(id);
     const transitionEvidence = evidenceBySubject.get(id);
@@ -235,6 +239,7 @@ const mermaidRoadmap = (
   graph: WorkGraph,
   derivation: Derivation,
   canonicalDigest: string,
+  registry: PolicyRegistry,
 ): string => {
   const statusById = new Map(derivation.statuses.map((status) => [status.subjectId, status]));
   const maturityById = new Map(
@@ -250,7 +255,7 @@ const mermaidRoadmap = (
   ].toSorted(byCodeUnit);
   const nodesById = new Map(graph.nodes.map((node) => [node.id, node]));
   const humanApprovedSubjects = new Set(
-    [...effectiveEvidenceBySubject(graph)]
+    [...effectiveEvidenceBySubject(graph, registry)]
       .filter(([, evidence]) => evidence.humanApprovedAssertion)
       .map(([subjectId]) => subjectId),
   );
@@ -310,6 +315,7 @@ const milestoneMarkdown = (
   graph: WorkGraph,
   derivation: Derivation,
   canonicalDigest: string,
+  registry: PolicyRegistry,
 ): string => {
   const statusById = new Map(derivation.statuses.map((status) => [status.subjectId, status]));
   const nodesById = new Map(graph.nodes.map((node) => [node.id, node]));
@@ -345,7 +351,8 @@ const milestoneMarkdown = (
       const node = nodesById.get(member.to);
       const memberStatus = statusById.get(member.to);
       const event = achievingEvent.get(member.to);
-      const evidence = event === undefined ? undefined : validatedTransitionEvidence(graph, event);
+      const evidence =
+        event === undefined ? undefined : validatedTransitionEvidence(graph, event, registry);
       // "machine-checked against its exact subject" is claimed only for
       // machine_policy authority, where the validator enforces that a passing
       // check itself names the subject's exact reference.
@@ -390,8 +397,9 @@ export const projectAll = (
   graph: WorkGraph,
   derivation: Derivation,
   canonicalDigest: string,
+  registry: PolicyRegistry,
 ): ProjectionOutcome => {
-  const validation = validateGraph(graph);
+  const validation = validateGraph(graph, registry);
   if (!validation.accepted) {
     return {
       ok: false,
@@ -406,7 +414,7 @@ export const projectAll = (
   }
 
   const statusById = new Map(derivation.statuses.map((status) => [status.subjectId, status]));
-  const schedule = dependencySchedule(graph, statusById);
+  const schedule = dependencySchedule(graph, statusById, registry);
   if (!("ok" in schedule)) return { ok: false, failure: schedule };
 
   const fulfilledRequestIds = new Set(
@@ -414,7 +422,7 @@ export const projectAll = (
       event.fulfillsRequest === undefined ? [] : [event.fulfillsRequest],
     ),
   );
-  const evidenceBySubject = effectiveEvidenceBySubject(graph);
+  const evidenceBySubject = effectiveEvidenceBySubject(graph, registry);
   const evidenceByEvent = new Map(
     [...evidenceBySubject.values()].map((evidence) => [evidence.eventId, evidence]),
   );
@@ -502,7 +510,7 @@ export const projectAll = (
     canonicalDigest: `sha256:${canonicalDigest}`,
     generator: PROJECTION_GENERATOR,
     derivationPolicy: { policy: derivation.policy, policyVersion: derivation.policyVersion },
-    events: graph.events.map((event) => explainEvent(graph, event)),
+    events: graph.events.map((event) => explainEvent(graph, event, registry)),
     effectiveEventIds: effectiveEvents(graph).map((event) => event.id),
     pendingRequests: graph.requests
       .filter((request) => !fulfilledRequestIds.has(request.id))
@@ -535,12 +543,12 @@ export const projectAll = (
       { path: "capability-roadmap.json", content: stableStringify(roadmap) },
       {
         path: "capability-roadmap.mmd",
-        content: mermaidRoadmap(graph, derivation, canonicalDigest),
+        content: mermaidRoadmap(graph, derivation, canonicalDigest, registry),
       },
       { path: "dependency-schedule.json", content: stableStringify(scheduleView) },
       {
         path: "milestone-status.md",
-        content: milestoneMarkdown(graph, derivation, canonicalDigest),
+        content: milestoneMarkdown(graph, derivation, canonicalDigest, registry),
       },
       { path: "transition-explanations.json", content: stableStringify(explanation) },
     ],

@@ -8,6 +8,7 @@ import type {
   WorkGraph,
   WorkNode,
 } from "./model.ts";
+import type { PolicyRegistry } from "./policy-registry.ts";
 import { effectiveEvents, validateGraph, validatedTransitionEvidence } from "./graph.ts";
 
 export const DERIVATION_POLICY = "workgraph.policy.roadmap-derivation";
@@ -159,8 +160,8 @@ const orGroupOf = (edge: WorkEdge): string | undefined => {
 
 const isOptional = (edge: WorkEdge): boolean => edge.attributes?.["optional"] === true;
 
-export const deriveRoadmap = (graph: WorkGraph): Derivation => {
-  const validation = validateGraph(graph);
+export const deriveRoadmap = (graph: WorkGraph, registry: PolicyRegistry): Derivation => {
+  const validation = validateGraph(graph, registry);
   const invalidSubjects = new Set(validation.issues.map((issue) => issue.subject));
   const lifecycle = latestLifecycle(graph);
   const nodesById = new Map(graph.nodes.map((node) => [node.id, node]));
@@ -527,7 +528,7 @@ export const deriveRoadmap = (graph: WorkGraph): Derivation => {
       const event = lifecycle.get(edge.to)?.event;
       return event === undefined
         ? false
-        : validatedTransitionEvidence(graph, event)?.machineChecked === true;
+        : validatedTransitionEvidence(graph, event, registry)?.machineChecked === true;
     });
     if (machineCheckedTargets.length > 0) {
       satisfied.push({
@@ -558,7 +559,7 @@ export const deriveRoadmap = (graph: WorkGraph): Derivation => {
         }
         const fact = lifecycle.get(edge.from);
         if (fact?.state !== "achieved") return false;
-        const evidence = validatedTransitionEvidence(graph, fact.event);
+        const evidence = validatedTransitionEvidence(graph, fact.event, registry);
         if (evidence === undefined) return false;
         return MATURITY_EVIDENCE_POLICY[category].some(
           (admission) =>

@@ -1,95 +1,12 @@
-import type {
-  AuthorityKind,
-  EvidenceCategory,
-  LifecycleState,
-  TransitionEvent,
-  WorkNode,
-} from "./model.ts";
+import type { AuthorityKind, EvidenceCategory, TransitionEvent, WorkNode } from "./model.ts";
+import {
+  findPolicy,
+  type PolicyRegistry,
+  type TransitionPolicyDefinition,
+} from "./policy-registry.ts";
 import { sameExactReference } from "./references.ts";
 
-export interface TransitionPolicyRule {
-  readonly priorState: LifecycleState | null;
-  readonly requestedState: LifecycleState;
-  readonly transitionKind: TransitionEvent["transitionKind"];
-}
-
-export interface TransitionPolicyDefinition {
-  readonly id: string;
-  readonly version: string;
-  readonly authority: AuthorityKind;
-  readonly evidenceCategory: EvidenceCategory;
-  readonly rules: ReadonlyArray<TransitionPolicyRule>;
-  readonly acceptanceContract?: string;
-}
-
-const ADMINISTRATIVE_ADVANCES: ReadonlyArray<TransitionPolicyRule> = [
-  { priorState: null, requestedState: "active", transitionKind: "advance" },
-  { priorState: null, requestedState: "achieved", transitionKind: "advance" },
-  { priorState: "active", requestedState: "achieved", transitionKind: "advance" },
-  { priorState: "achieved", requestedState: "abandoned", transitionKind: "advance" },
-];
-
-const ADMINISTRATIVE_CORRECTIONS: ReadonlyArray<TransitionPolicyRule> = [
-  { priorState: null, requestedState: "active", transitionKind: "correct" },
-  { priorState: null, requestedState: "achieved", transitionKind: "correct" },
-  { priorState: null, requestedState: "stale", transitionKind: "correct" },
-  { priorState: "active", requestedState: "achieved", transitionKind: "correct" },
-];
-
-const machinePolicy = (id: string, acceptanceContract: string): TransitionPolicyDefinition => ({
-  id,
-  version: "1",
-  authority: "machine_policy",
-  evidenceCategory: "machine_check",
-  acceptanceContract,
-  rules: [
-    { priorState: null, requestedState: "achieved", transitionKind: "advance" },
-    { priorState: "active", requestedState: "achieved", transitionKind: "advance" },
-  ],
-});
-
-/**
- * Closed, named policy registry for tracer 0001. Application-specific machine
- * policies are explicit source: accepting a new checker contract is a
- * reviewable policy change, never an arbitrary event string.
- */
-export const TRANSITION_POLICIES: ReadonlyArray<TransitionPolicyDefinition> = [
-  {
-    id: "workgraph.policy.administrative",
-    version: "1",
-    authority: "administrative_assertion",
-    evidenceCategory: "agent_assertion",
-    rules: [...ADMINISTRATIVE_ADVANCES, ...ADMINISTRATIVE_CORRECTIONS],
-  },
-  {
-    id: "workgraph.policy.administrative-assumption",
-    version: "1",
-    authority: "administrative_assertion",
-    evidenceCategory: "assumption",
-    rules: ADMINISTRATIVE_ADVANCES,
-  },
-  {
-    id: "workgraph.policy.human-approval",
-    version: "1",
-    authority: "human_approval",
-    evidenceCategory: "human_approved_assertion",
-    rules: [{ priorState: null, requestedState: "achieved", transitionKind: "advance" }],
-  },
-  {
-    id: "workgraph.policy.imported-observation",
-    version: "1",
-    authority: "imported_observation",
-    evidenceCategory: "external_observation",
-    rules: [
-      { priorState: null, requestedState: "active", transitionKind: "advance" },
-      { priorState: null, requestedState: "achieved", transitionKind: "advance" },
-    ],
-  },
-  machinePolicy("workgraph.policy.machine-check", "workgraph.policy.machine-check/v1"),
-  machinePolicy("orchard.policy.probe-acceptance", "orchard.policy.probe-acceptance/v1"),
-  machinePolicy("orchard.policy.gate-0001", "orchard.policy.gate-0001/v1"),
-  machinePolicy("orchard.policy.replay", "orchard.policy.replay/v1"),
-];
+export type { TransitionPolicyDefinition, TransitionPolicyRule } from "./policy-registry.ts";
 
 export interface PolicyIssue {
   readonly code: string;
@@ -109,10 +26,6 @@ export interface PolicyEvaluation {
   readonly issues: ReadonlyArray<PolicyIssue>;
   readonly evidence?: ValidatedTransitionEvidence;
 }
-
-const policies = new Map(
-  TRANSITION_POLICIES.map((policy) => [`${policy.id}\u0000${policy.version}`, policy]),
-);
 
 const exactSubjectInBasis = (event: TransitionEvent, node: WorkNode): boolean => {
   if (node.exactSubject === undefined) return true;
@@ -141,8 +54,9 @@ const exactSubjectInBasis = (event: TransitionEvent, node: WorkNode): boolean =>
 export const evaluateTransitionPolicy = (
   event: TransitionEvent,
   node: WorkNode,
+  registry: PolicyRegistry,
 ): PolicyEvaluation => {
-  const policy = policies.get(`${event.policy}\u0000${event.policyVersion}`);
+  const policy = findPolicy(registry, event.policy, event.policyVersion);
   if (policy === undefined) {
     return {
       issues: [
