@@ -316,7 +316,12 @@ export const validateDocumentCoherence = (
 export const commandDigest = (command: AppendTransitionCommand, hash: HashFunction): Sha256Digest =>
   hash(stableStringify(command));
 
-const issuedApplyDecisions = new WeakSet<ApplyDecision>();
+interface IssuedApplyBinding {
+  readonly documentDigest: Sha256Digest;
+  readonly policyRegistryDigest: Sha256Digest;
+}
+
+const issuedApplyDecisions = new WeakMap<ApplyDecision, IssuedApplyBinding>();
 
 const inputBoundIssues = (
   graph: WorkGraph,
@@ -451,7 +456,13 @@ export const decideAppend = (
       resultRevision: document.revision + 1,
     },
   });
-  issuedApplyDecisions.add(decision);
+  issuedApplyDecisions.set(
+    decision,
+    immutableSnapshot({
+      documentDigest: coherence.identity.documentDigest,
+      policyRegistryDigest: registry.digest,
+    }),
+  );
   return decision;
 };
 
@@ -461,7 +472,8 @@ export const completeAppend = (
   hash: HashFunction,
   registry: ResolvedPolicyRegistry,
 ): AppendCompletion => {
-  if (!issuedApplyDecisions.has(decision)) {
+  const issuedBinding = issuedApplyDecisions.get(decision);
+  if (issuedBinding === undefined) {
     return {
       ok: false,
       issues: [
@@ -473,6 +485,24 @@ export const completeAppend = (
     };
   }
   const coherence = validateDocumentCoherence(document, hash);
+  if (
+    !coherence.accepted ||
+    coherence.identity === undefined ||
+    coherence.identity.documentDigest !== issuedBinding.documentDigest ||
+    registry.digest !== issuedBinding.policyRegistryDigest ||
+    !authenticatePolicyRegistry(registry, hash)
+  ) {
+    return {
+      ok: false,
+      issues: [
+        ...coherence.issues,
+        coherenceIssue(
+          "append_plan_authentication_failed",
+          "Append plan is not bound to this document and policy registry.",
+        ),
+      ],
+    };
+  }
   const prefix = decision.candidateGraph.events.slice(0, document.graph.events.length);
   const completionIssues: Array<ValidationIssue> = [
     ...coherence.issues,

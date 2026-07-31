@@ -374,6 +374,66 @@ describe("acceptance for design spec 0002 portable slices", () => {
     });
   });
 
+  test("completion binds an issued plan to the exact coherent input document", () => {
+    const genesis = createGenesisDocument(graph(), sha256Text);
+    const firstCommand: AppendTransitionCommand = {
+      schemaVersion: "workgraph.command.append-transition/v1alpha1",
+      idempotencyKey: "first",
+      expectedRevision: 0,
+      expectedGraphDigest: genesis.graphDigest,
+      expectedPolicyRegistryDigest: registry.digest,
+      event: event("event:first"),
+    };
+    const firstDecision = decideAppend(
+      genesis,
+      validateDocumentCoherence(genesis, sha256Text).identity!,
+      firstCommand,
+      commandDigest(firstCommand, sha256Text),
+      registry,
+      sha256Text,
+    );
+    if (!("candidateGraph" in firstDecision)) throw new Error("expected first Apply");
+    const firstCompletion = completeAppend(genesis, firstDecision, sha256Text, registry);
+    if (!firstCompletion.ok) throw new Error("expected first completion");
+    const documentA = firstCompletion.document;
+    const zeroDigest = `sha256:${"0".repeat(64)}` as Sha256Digest;
+    const documentB = {
+      ...documentA,
+      receipts: [{ ...documentA.receipts[0]!, commandDigest: zeroDigest }],
+    };
+    const identityA = validateDocumentCoherence(documentA, sha256Text).identity!;
+    const identityB = validateDocumentCoherence(documentB, sha256Text).identity!;
+    expect(identityB).toBeDefined();
+    expect(identityA.documentDigest).not.toBe(identityB.documentDigest);
+
+    const secondEvent: TransitionEvent = {
+      ...event("event:second"),
+      priorState: "active",
+      requestedState: "achieved",
+    };
+    const secondCommand: AppendTransitionCommand = {
+      schemaVersion: "workgraph.command.append-transition/v1alpha1",
+      idempotencyKey: "second",
+      expectedRevision: documentA.revision,
+      expectedGraphDigest: documentA.graphDigest,
+      expectedPolicyRegistryDigest: registry.digest,
+      event: secondEvent,
+    };
+    const secondDecision = decideAppend(
+      documentA,
+      identityA,
+      secondCommand,
+      commandDigest(secondCommand, sha256Text),
+      registry,
+      sha256Text,
+    );
+    if (!("candidateGraph" in secondDecision)) throw new Error("expected second Apply");
+    expect(completeAppend(documentB, secondDecision, sha256Text, registry)).toMatchObject({
+      ok: false,
+      issues: [{ code: "append_plan_authentication_failed" }],
+    });
+  });
+
   test("decision snapshots command aliases and counts the new receipt in public bounds", () => {
     expect(
       withinPublicDocumentBounds({
