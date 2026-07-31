@@ -13,7 +13,8 @@
     "format:check": "oxfmt --check .",
     "check:imports": "bun scripts/check-portable-imports.ts",
     "check": "bun scripts/check.ts",
-    "accept:0001": "bun scripts/accept-0001.ts"
+    "accept:0001": "bun scripts/accept-0001.ts",
+    "accept:0002": "bun scripts/accept-0002.ts"
   },
   "dependencies": {
     "@effect/platform-bun": "4.0.0-beta.102",

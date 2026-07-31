@@ -1,0 +1,99 @@
+# Plan 0002: local command loop
+
+Status: contract frozen, implementation not present
+
+Frozen base: `ba9fecdd56a3a0b592604e79b55715363e6ee5f3`
+
+Contract: `design-specs/0002-local-command-loop.md`
+
+## Product dependency
+
+```text
+0001 portable graph and projection semantics
+                  |
+                  v
+0002 explicit policy registry and document codec
+                  |
+                  v
+0002 digest-bound append decision
+                  |
+                  v
+0002 Bun and Node atomic store adapters
+          +-------+-------+
+          |               |
+          v               v
+  local CLI and API   read-only projections
+          |
+          v
+   local agent skill
+          |
+          v
+future Control Room adapter
+```
+
+The Control Room adapter requires both products. It is not part of 0002.
+
+## Frozen slices
+
+### Slice 1: portable decisions
+
+- Add an explicit immutable policy registry.
+- Preserve the 0001 fixture registry as a composition value.
+- Add local document, identity, receipt, and command types.
+- Add the pure append decision.
+- Add prefix, correction, conflict, and idempotency tests.
+
+### Slice 2: decode and identify
+
+- Add the bounded duplicate-key-safe decoder.
+- Add deterministic document encoding.
+- Add the SHA-256 service boundary.
+- Add malformed, hostile, and parity tests.
+
+### Slice 3: local custody
+
+- Add the Effect store service.
+- Add Bun and Node live layers.
+- Add lock, temporary-file, sync, rename, and read-back handling.
+- Add fault-injected conflict and unknown-outcome tests.
+- Add path, link, and cleanup adversaries.
+
+### Slice 4: product surfaces
+
+- Add the shared CLI parser and JSON outcomes.
+- Keep the 0001 commands compatible.
+- Add digest-bound local projections and drift checks.
+- Add the usage guide.
+- Add the local agent skill.
+
+### Slice 5: acceptance
+
+- Run the canonical full gate.
+- Run both accepted tracer gates.
+- Validate the skill.
+- Run the fresh-agent unknown-outcome journey.
+- Record exact source and environment observations.
+
+## Frozen implementation ownership
+
+The implementation owns only the modules and deliverables named in the design
+spec. It must not import Semantic Systems or add a Control Room adapter.
+
+The implementation must not revise 0001 fixture semantics. If a registry
+refactor changes generated 0001 bytes, stop and report the incompatibility.
+
+## Review checkpoints
+
+1. Review the pure registry and append decision before filesystem work.
+2. Review the write-custody state machine before a live adapter runs.
+3. Review all fault outcomes before CLI integration.
+4. Run an independent exact-head review before integration.
+
+## Deferred decisions
+
+- A later tracer can define signed policy registries.
+- A later tracer can define automatic lock leases.
+- A later tracer can define Windows replacement semantics.
+- A later tracer can define a Control Room projection adapter.
+
+No deferred decision blocks the 0002 implementation.
