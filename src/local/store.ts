@@ -56,7 +56,8 @@ export type FileObservation =
 
 export interface ObservedRegularFile {
   readonly basename: SafeBasename;
-  readonly bytes: Uint8Array;
+  readonly byteLength: number;
+  readonly copyBytes: () => Uint8Array;
   readonly mode: number;
   readonly observation: ExactFileObservation;
 }
@@ -64,11 +65,6 @@ export interface ObservedRegularFile {
 export interface ObserveRegularFileInput {
   readonly rootPath: string;
   readonly basename: string;
-}
-
-export interface LocalFileStoreOptions {
-  readonly platform?: string;
-  readonly procSelfFdPath?: string;
 }
 
 export interface StoreUnavailable {
@@ -126,10 +122,9 @@ export class ExclusiveFenceLock extends Context.Service<
 >()("workgraph/ExclusiveFenceLock") {}
 
 export interface RetainedRoot {
-  readonly fd: number;
   readonly identity: RootIdentity;
   readonly readRegularFile: (
-    basename: SafeBasename,
+    basename: string,
   ) => Effect.Effect<ObservedRegularFile, StoreReadFailure>;
 }
 
@@ -225,22 +220,47 @@ const fileIdentity = (metadata: {
 const sha256Bytes = (bytes: Uint8Array): Sha256Digest =>
   `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
 
+/**
+ * This checkpoint only reads already-open files and publishes no filesystem
+ * state. A close failure cannot change the captured bytes, metadata, or digest,
+ * and the observation makes no claim that descriptor cleanup succeeded.
+ * Mutation scopes must replace this helper with typed cleanup evidence.
+ */
 const closeQuietly = (handle: FileHandle): Effect.Effect<void> =>
   Effect.promise(async () => {
     try {
       await handle.close();
     } catch {
-      // The scoped acquisition reports all earlier observations. Close has no target effect.
+      // No filesystem effect or cleanup-success claim belongs to this read observation.
     }
   });
+
+type HandleRelativePathsProbe = (
+  fd: number,
+  identity: BigIdentity,
+) => Effect.Effect<void, StoreUnavailable>;
+
+const fixedHandleRelativePathsProbe: HandleRelativePathsProbe = (fd, identity) =>
+  Effect.tryPromise({
+    try: async () => {
+      const visible = await stat(`${PROC_SELF_FD}/${fd}`, { bigint: true });
+      if (visible.dev !== identity.device || visible.ino !== identity.inode) {
+        throw new Error("retained root is not visible through the fixed procfs route");
+      }
+    },
+    catch: () => unavailable("root-open", "handle_relative_paths_unavailable"),
+  });
+
+const unavailableHandleRelativePathsProbe: HandleRelativePathsProbe = () =>
+  Effect.fail(unavailable("root-open", "handle_relative_paths_unavailable"));
 
 const openRetainedRoot = (
   rootPath: string,
   fence: ExclusiveFenceLockApi,
-  options: LocalFileStoreOptions,
+  probeHandleRelativePaths: HandleRelativePathsProbe,
 ): Effect.Effect<RetainedRoot, StoreOpenFailure, Scope.Scope> =>
   Effect.gen(function* () {
-    if ((options.platform ?? process.platform) !== "linux") {
+    if (process.platform !== "linux") {
       return yield* Effect.fail(unavailable("platform-check", "unsupported_platform"));
     }
 
@@ -282,28 +302,24 @@ const openRetainedRoot = (
         return result.success;
       });
 
-    const visible = yield* withRootRecheck(
-      Effect.tryPromise({
-        try: () => stat(`${options.procSelfFdPath ?? PROC_SELF_FD}/${handle.fd}`, { bigint: true }),
-        catch: () => unavailable("root-open", "handle_relative_paths_unavailable"),
-      }),
-      "root-open",
-    );
-    if (visible.dev !== rootIdentity.device || visible.ino !== rootIdentity.inode) {
-      return yield* Effect.fail(unavailable("root-open", "handle_relative_paths_unavailable"));
-    }
+    yield* withRootRecheck(probeHandleRelativePaths(handle.fd, rootIdentity), "root-open");
     const probe = yield* withRootRecheck(fence.probe(handle.fd), "root-open");
     if (Reflect.get(probe, "_tag") !== "Available") {
       return yield* Effect.fail(unavailable("root-open", "exclusive_fence_lock_unavailable"));
     }
 
     const readRegularFile = (
-      basename: SafeBasename,
+      basename: string,
     ): Effect.Effect<ObservedRegularFile, StoreReadFailure> =>
       Effect.scoped(
         Effect.gen(function* () {
+          const decoded = decodeSafeBasename(basename);
+          if (!decoded.ok) {
+            return yield* Effect.fail(rejected(decoded.code, decoded.detail));
+          }
+          const safeBasename = decoded.basename;
           yield* assertRoot("input-read");
-          const childPath = `${options.procSelfFdPath ?? PROC_SELF_FD}/${handle.fd}/${basename}`;
+          const childPath = `${PROC_SELF_FD}/${handle.fd}/${safeBasename}`;
           const child = yield* Effect.acquireRelease(
             withRootRecheck(
               Effect.tryPromise({
@@ -383,17 +399,18 @@ const openRetainedRoot = (
               rejected("file_identity_out_of_range", "The file identity is not a safe integer."),
             );
           }
-          const bytes = new Uint8Array(buffer.subarray(0, readResult.bytesRead));
+          const capturedBytes = new Uint8Array(buffer.subarray(0, readResult.bytesRead));
           return Object.freeze({
-            basename,
-            bytes,
+            basename: safeBasename,
+            byteLength: capturedBytes.byteLength,
+            copyBytes: () => new Uint8Array(capturedBytes),
             mode: Number(after.mode & 0o7777n),
             observation: immutableSnapshot({
               _tag: "Exact" as const,
               device,
               inode,
               linkCount,
-              contentDigest: sha256Bytes(bytes),
+              contentDigest: sha256Bytes(capturedBytes),
             }),
           });
         }),
@@ -405,17 +422,17 @@ const openRetainedRoot = (
       return yield* Effect.fail(failed("root-open", "root_identity_out_of_range"));
     }
     return {
-      fd: handle.fd,
       identity: immutableSnapshot({ device, inode }),
       readRegularFile,
     };
   });
 
-export const makeLocalFileStore = (
+const makeLocalFileStoreWithProbe = (
   fence: ExclusiveFenceLockApi,
-  options: LocalFileStoreOptions = {},
+  probeHandleRelativePaths: HandleRelativePathsProbe,
 ): LocalFileStoreApi => {
-  const openRoot = (rootPath: string) => openRetainedRoot(rootPath, fence, options);
+  const openRoot = (rootPath: string) =>
+    openRetainedRoot(rootPath, fence, probeHandleRelativePaths);
   return {
     openRoot,
     observeRegularFile: (input) => {
@@ -429,6 +446,17 @@ export const makeLocalFileStore = (
     },
   };
 };
+
+export const makeLocalFileStore = (fence: ExclusiveFenceLockApi): LocalFileStoreApi =>
+  makeLocalFileStoreWithProbe(fence, fixedHandleRelativePathsProbe);
+
+/**
+ * Failure-only test seam. It cannot provide a substitute route and is not used
+ * by either live layer.
+ */
+export const makeHandleRelativePathsUnavailableStoreForTest = (
+  fence: ExclusiveFenceLockApi,
+): LocalFileStoreApi => makeLocalFileStoreWithProbe(fence, unavailableHandleRelativePathsProbe);
 
 export const makeLocalFileStoreLayer = (
   fenceLayer: Layer.Layer<ExclusiveFenceLock>,

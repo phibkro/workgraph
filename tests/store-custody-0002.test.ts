@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { link, mkdir, rename, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -6,9 +7,11 @@ import { after, before, test } from "node:test";
 import { Effect, Result } from "effect";
 import {
   decodeSafeBasename,
+  makeHandleRelativePathsUnavailableStoreForTest,
   makeLocalFileStore,
   type ExclusiveFenceLockApi,
   type LocalFileStoreApi,
+  type SafeBasename,
   type StoreReadFailure,
 } from "../src/local/store.ts";
 
@@ -76,6 +79,59 @@ test("retained-root reads reject symbolic links and multiply-linked files", asyn
   }
 });
 
+test("retained-root reads decode a forged label at the runtime call boundary", async () => {
+  const rootPath = join(fixtureRoot, "forged-label");
+  await mkdir(rootPath);
+  await writeFile(join(fixtureRoot, "outside.json"), "outside");
+
+  const outcome = await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const root = yield* store.openRoot(rootPath);
+        assert.equal(Reflect.has(root, "fd"), false);
+        const forged = "../outside.json" as SafeBasename;
+        return yield* Effect.result(root.readRegularFile(forged));
+      }),
+    ),
+  );
+
+  assert.equal(Result.isFailure(outcome), true);
+  if (Result.isFailure(outcome)) {
+    assert.deepEqual(outcome.failure, {
+      _tag: "Rejected",
+      phase: "input-read",
+      code: "unsafe_basename",
+      detail: "A file name must be one safe direct-child basename of 1 through 255 UTF-8 bytes.",
+    });
+  }
+});
+
+test("returned byte copies cannot diverge the retained observation from its digest", async () => {
+  const rootPath = join(fixtureRoot, "immutable-bytes");
+  const source = Uint8Array.from([0xff, 0x00, 0x41, 0x7f]);
+  await mkdir(rootPath);
+  await writeFile(join(rootPath, "graph.bin"), source);
+
+  const observed = await Effect.runPromise(
+    store.observeRegularFile({ rootPath, basename: "graph.bin" }),
+  );
+  const firstCopy = observed.copyBytes();
+  firstCopy[0] = 0;
+  const secondCopy = observed.copyBytes();
+  const expectedDigest = `sha256:${createHash("sha256").update(source).digest("hex")}` as const;
+
+  assert.deepEqual(secondCopy, source);
+  assert.notDeepEqual(firstCopy, secondCopy);
+  assert.equal(observed.byteLength, source.byteLength);
+  assert.equal(observed.observation.contentDigest, expectedDigest);
+
+  const observedAgain = await Effect.runPromise(
+    store.observeRegularFile({ rootPath, basename: "graph.bin" }),
+  );
+  assert.deepEqual(observedAgain.copyBytes(), source);
+  assert.equal(observedAgain.observation.contentDigest, expectedDigest);
+});
+
 test("retained root contains a read after the original ancestor is replaced", async () => {
   const original = join(fixtureRoot, "original");
   const moved = join(fixtureRoot, "moved");
@@ -99,7 +155,7 @@ test("retained root contains a read after the original ancestor is replaced", as
     ),
   );
 
-  assert.equal(new TextDecoder().decode(observed.bytes), "retained");
+  assert.equal(new TextDecoder().decode(observed.copyBytes()), "retained");
   assert.equal(observed.observation.linkCount, 1);
 });
 
@@ -131,9 +187,7 @@ test("an unavailable procfs capability fails before a child input read", async (
   const root = join(fixtureRoot, "procfs-unavailable");
   await mkdir(root);
   await writeFile(join(root, "graph.json"), "must-not-be-read");
-  const unavailableStore = makeLocalFileStore(await runtimeFence(), {
-    procSelfFdPath: join(fixtureRoot, "missing-proc-self-fd"),
-  });
+  const unavailableStore = makeHandleRelativePathsUnavailableStoreForTest(await runtimeFence());
   const outcome = await Effect.runPromise(
     Effect.result(unavailableStore.observeRegularFile({ rootPath: root, basename: "graph.json" })),
   );
@@ -147,4 +201,19 @@ test("an unavailable procfs capability fails before a child input read", async (
       cleanupResidue: [],
     });
   }
+});
+
+test("public construction cannot substitute the fixed procfs route", async () => {
+  const rootPath = join(fixtureRoot, "fixed-procfs-route");
+  await mkdir(rootPath);
+  await writeFile(join(rootPath, "graph.json"), "fixed");
+  const publicStore = Reflect.apply(makeLocalFileStore, undefined, [
+    await runtimeFence(),
+    { procSelfFdPath: join(fixtureRoot, "attacker-route") },
+  ]) as LocalFileStoreApi;
+
+  const observed = await Effect.runPromise(
+    publicStore.observeRegularFile({ rootPath, basename: "graph.json" }),
+  );
+  assert.equal(new TextDecoder().decode(observed.copyBytes()), "fixed");
 });
