@@ -1,17 +1,30 @@
 import { describe, expect, test } from "bun:test";
 import * as BunFileSystem from "@effect/platform-bun/BunFileSystem";
 import { Effect, Layer } from "effect";
-import { deriveRoadmap } from "../src/core/derive.ts";
-import { effectiveEvents, reduceLifecycle, validateGraph } from "../src/core/graph.ts";
+import { deriveRoadmap as deriveRoadmapWithRegistry } from "../src/core/derive.ts";
+import {
+  effectiveEvents,
+  reduceLifecycle,
+  validateGraph as validateGraphWithRegistry,
+} from "../src/core/graph.ts";
 import type { GitCommitReference, TransitionEvent, WorkGraph } from "../src/core/model.ts";
 import { normalizeGraph } from "../src/core/normalize.ts";
-import { projectAll } from "../src/core/projections.ts";
+import { projectAll as projectAllWithRegistry } from "../src/core/projections.ts";
 import { validateBasisReference } from "../src/core/references.ts";
 import { portableImportViolations } from "../scripts/portable-import-policy.ts";
 import { unsupportedClaimFindings } from "../src/acceptance/claims.ts";
 import { acceptanceCoverage } from "../src/acceptance/manifest.ts";
 import { buildViews, JourneyFailure, runCli, webCryptoSha256 } from "../src/cli/journey.ts";
 import { fixtureCommit, tracerFixture } from "../src/fixture/tracer-0001.ts";
+import { policyRegistry0001 } from "../src/fixture/policy-registry-0001.ts";
+
+const validateGraph = (graph: WorkGraph) => validateGraphWithRegistry(graph, policyRegistry0001);
+const deriveRoadmap = (graph: WorkGraph) => deriveRoadmapWithRegistry(graph, policyRegistry0001);
+const projectAll = (
+  graph: WorkGraph,
+  derivation: ReturnType<typeof deriveRoadmap>,
+  digest: string,
+) => projectAllWithRegistry(graph, derivation, digest, policyRegistry0001);
 
 const REFERENCE_KINDS = new Set([
   "git_commit",

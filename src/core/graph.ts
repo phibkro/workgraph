@@ -1,4 +1,5 @@
 import type { LifecycleState, TransitionEvent, WorkEdge, WorkGraph, WorkNode } from "./model.ts";
+import type { PolicyRegistry } from "./policy-registry.ts";
 import { validateBasisReference, validateExactReference } from "./references.ts";
 import { evaluateTransitionPolicy, type ValidatedTransitionEvidence } from "./transition-policy.ts";
 
@@ -201,6 +202,7 @@ export const effectiveEvents = (graph: WorkGraph): ReadonlyArray<TransitionEvent
 export const validatedTransitionEvidence = (
   graph: WorkGraph,
   event: TransitionEvent,
+  registry: PolicyRegistry,
 ): ValidatedTransitionEvidence | undefined => {
   const node = graph.nodes.find((candidate) => candidate.id === event.subjectId);
   if (node === undefined) return undefined;
@@ -208,10 +210,10 @@ export const validatedTransitionEvidence = (
   if (event.basis.some((reference) => validateBasisReference(reference).length > 0)) {
     return undefined;
   }
-  return evaluateTransitionPolicy(event, node).evidence;
+  return evaluateTransitionPolicy(event, node, registry).evidence;
 };
 
-export const validateGraph = (graph: WorkGraph): ValidationResult => {
+export const validateGraph = (graph: WorkGraph, registry: PolicyRegistry): ValidationResult => {
   const issues: Array<ValidationIssue> = [];
   const nodes = new Map(graph.nodes.map((node) => [node.id, node]));
   const events = new Map(graph.events.map((event) => [event.id, event]));
@@ -383,7 +385,7 @@ export const validateGraph = (graph: WorkGraph): ValidationResult => {
       }
     }
 
-    for (const policyIssue of evaluateTransitionPolicy(event, node).issues) {
+    for (const policyIssue of evaluateTransitionPolicy(event, node, registry).issues) {
       issues.push({
         code: policyIssue.code,
         subject: event.id,

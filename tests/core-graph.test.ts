@@ -5,7 +5,10 @@ import type {
   TransitionEvent,
   WorkGraph,
 } from "../src/core/model.ts";
-import { reduceLifecycle, validateGraph } from "../src/core/graph.ts";
+import { reduceLifecycle, validateGraph as validateGraphWithRegistry } from "../src/core/graph.ts";
+import { policyRegistry0001 } from "../src/fixture/policy-registry-0001.ts";
+
+const validateGraph = (graph: WorkGraph) => validateGraphWithRegistry(graph, policyRegistry0001);
 
 const commitA: GitCommitReference = {
   kind: "git_commit",
