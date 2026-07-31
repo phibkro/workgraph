@@ -219,7 +219,11 @@ export const resolvePolicyRegistry = (
     digestScope: stableStringify({
       schemaVersion: "workgraph.resolved-policy-registry/v1alpha1",
       definitions: normalized.map((definition) => ({
-        ...definition,
+        id: definition.id,
+        version: definition.version,
+        authority: definition.authority,
+        evidenceCategory: definition.evidenceCategory,
+        rules: definition.rules,
         acceptanceContract: definition.acceptanceContract ?? null,
       })),
     }),
