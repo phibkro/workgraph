@@ -183,6 +183,130 @@ test("inspection keeps request, absence, other-file, and document failures typed
   }
 });
 
+test("inspection request custody rejects proxies, accessors, and hidden fields as typed failures", async () => {
+  const rootPath = join(fixtureRoot, "request-custody");
+  await mkdir(rootPath);
+  await writeDocument(rootPath, createGenesisDocument(graph(), sha256Text));
+
+  const expectInvalid = async (candidate: unknown) => {
+    const outcome = await inspectResult(candidate as InspectLocalDocumentRequest);
+    assert.equal(Result.isFailure(outcome), true);
+    if (Result.isFailure(outcome)) {
+      assert.equal(Reflect.get(outcome.failure, "_tag"), "Rejected");
+      assert.equal(outcome.failure.code, "invalid_inspection_request");
+    }
+  };
+
+  const throwingProxy = new Proxy(
+    { rootPath, fileBasename: "workgraph.json" },
+    {
+      getPrototypeOf() {
+        throw new Error("trap must not become a defect");
+      },
+      ownKeys() {
+        throw new Error("trap must not become a defect");
+      },
+      getOwnPropertyDescriptor() {
+        throw new Error("trap must not become a defect");
+      },
+    },
+  );
+  await expectInvalid(throwingProxy);
+
+  const wellBehavedProxy = new Proxy({ rootPath, fileBasename: "workgraph.json" }, {});
+  await expectInvalid(wellBehavedProxy);
+
+  let accessorReads = 0;
+  const withAccessor = {};
+  Object.defineProperty(withAccessor, "rootPath", {
+    enumerable: true,
+    configurable: true,
+    get: () => {
+      accessorReads += 1;
+      return rootPath;
+    },
+  });
+  Object.defineProperty(withAccessor, "fileBasename", {
+    enumerable: true,
+    configurable: true,
+    writable: true,
+    value: "workgraph.json",
+  });
+  await expectInvalid(withAccessor);
+  assert.equal(accessorReads, 0);
+
+  const hiddenExtra = { rootPath, fileBasename: "workgraph.json" };
+  Object.defineProperty(hiddenExtra, "extra", {
+    enumerable: false,
+    configurable: true,
+    value: "hidden",
+  });
+  await expectInvalid(hiddenExtra);
+
+  const hiddenRequired = { fileBasename: "workgraph.json" };
+  Object.defineProperty(hiddenRequired, "rootPath", {
+    enumerable: false,
+    configurable: true,
+    value: rootPath,
+  });
+  await expectInvalid(hiddenRequired);
+
+  await expectInvalid({ rootPath, fileBasename: "workgraph.json", [Symbol("hidden")]: true });
+  await expectInvalid({ fileBasename: "workgraph.json" });
+  await expectInvalid({ rootPath });
+  await expectInvalid({ rootPath, fileBasename: 7 });
+  await expectInvalid({ rootPath: "", fileBasename: "workgraph.json" });
+  await expectInvalid({ rootPath: `${rootPath}\0`, fileBasename: "workgraph.json" });
+  await expectInvalid({ rootPath, fileBasename: "workgraph.json", policyBasename: "a\0b" });
+  await expectInvalid(Object.assign(Object.create(null), { fileBasename: "workgraph.json" }));
+  await expectInvalid([rootPath, "workgraph.json"]);
+  await expectInvalid(null);
+
+  const nullPrototype = Object.assign(Object.create(null) as object, {
+    rootPath,
+    fileBasename: "workgraph.json",
+  });
+  const accepted = await inspectResult(nullPrototype as InspectLocalDocumentRequest);
+  assert.equal(Result.isSuccess(accepted), true);
+});
+
+test("mutation or aliasing after Effect construction cannot change the inspected root or file", async () => {
+  const chosenRoot = join(fixtureRoot, "chosen-root");
+  const decoyRoot = join(fixtureRoot, "decoy-root");
+  await mkdir(chosenRoot);
+  await mkdir(decoyRoot);
+  const chosenDocument = createGenesisDocument(graph(), sha256Text);
+  const decoyDocument = createGenesisDocument(
+    graph({ nodes: [{ id: "work:decoy", kind: "work_item", title: "Decoy" }] }),
+    sha256Text,
+  );
+  const chosenSource = await writeDocument(chosenRoot, chosenDocument);
+  await writeDocument(decoyRoot, decoyDocument);
+  await writeFile(join(chosenRoot, "decoy.json"), encodeLocalDocument(decoyDocument));
+
+  const request: { rootPath: string; fileBasename: string } = {
+    rootPath: chosenRoot,
+    fileBasename: "workgraph.json",
+  };
+  const inspection = store.inspectLocalDocument(request);
+
+  request.rootPath = decoyRoot;
+  request.fileBasename = "decoy.json";
+  Reflect.set(request, "policyBasename", "decoy.json");
+
+  const inspected = await Effect.runPromise(inspection);
+  const expectedDigest = `sha256:${createHash("sha256").update(chosenSource, "utf8").digest("hex")}`;
+  assert.equal(inspected.fileBasename, "workgraph.json");
+  assert.equal(inspected.fileObservation.contentDigest, expectedDigest);
+  assert.equal(inspected.identity.graphDigest, chosenDocument.graphDigest);
+  assert.equal(inspected.policyFile, undefined);
+
+  delete (request as { rootPath?: string }).rootPath;
+  const rerun = await Effect.runPromise(inspection);
+  assert.equal(rerun.fileObservation.contentDigest, expectedDigest);
+  assert.equal(rerun.identity.graphDigest, chosenDocument.graphDigest);
+});
+
 test("inspection rejects incoherent documents and policy-invalid graphs", async () => {
   const incoherentRoot = join(fixtureRoot, "incoherent");
   await mkdir(incoherentRoot);

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import { open, stat, type FileHandle } from "node:fs/promises";
+import { types as nodeUtilTypes } from "node:util";
 import { Context, Effect, Layer, Result, type Scope } from "effect";
 import { validateGraph, type ValidationIssue } from "../core/graph.ts";
 import {
@@ -497,27 +498,103 @@ const openRetainedRoot = (
     };
   });
 
-const isInspectionRequest = (value: unknown): value is InspectLocalDocumentRequest => {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
-  const prototype = Object.getPrototypeOf(value);
-  if (prototype !== Object.prototype && prototype !== null) return false;
-  const keys = Reflect.ownKeys(value);
-  if (keys.some((key) => typeof key !== "string")) return false;
-  if (
-    !keys.every((key) => ["rootPath", "fileBasename", "policyBasename"].includes(String(key))) ||
-    !keys.includes("rootPath") ||
-    !keys.includes("fileBasename")
-  ) {
-    return false;
+interface InspectionRequestSnapshot {
+  readonly rootPath: string;
+  readonly fileBasename: string;
+  readonly policyBasename?: string;
+}
+
+type InspectionRequestDecodeResult =
+  | { readonly ok: true; readonly snapshot: InspectionRequestSnapshot }
+  | { readonly ok: false; readonly detail: string };
+
+type CapturedField =
+  | { readonly kind: "absent" }
+  | { readonly kind: "captured"; readonly value: string }
+  | { readonly kind: "invalid"; readonly detail: string };
+
+/**
+ * Custody boundary: the caller object is observed in exactly one
+ * `getOwnPropertyDescriptors` pass, every accepted string is captured exactly
+ * once from that pass, and the caller object is never read again. Proxies,
+ * accessors, symbol keys, non-enumerable fields, extra or missing fields,
+ * non-strings, and NUL bytes are typed rejections, and a throwing exotic
+ * object is a typed rejection rather than a defect.
+ */
+const invalid = (detail: string): InspectionRequestDecodeResult => ({ ok: false, detail });
+
+const decodeInspectionRequest = (value: unknown): InspectionRequestDecodeResult => {
+  try {
+    if (value === null || typeof value !== "object") {
+      return invalid("An inspection request must be a plain object.");
+    }
+    if (nodeUtilTypes.isProxy(value)) {
+      return invalid("An inspection request must not be a proxy.");
+    }
+    if (Array.isArray(value)) {
+      return invalid("An inspection request must be a plain object, not an array.");
+    }
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) {
+      return invalid("An inspection request must not carry a custom prototype.");
+    }
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const keys = Reflect.ownKeys(descriptors);
+    if (keys.some((key) => typeof key !== "string")) {
+      return invalid("An inspection request must not carry symbol-keyed fields.");
+    }
+    if (
+      !keys.every((key) => ["rootPath", "fileBasename", "policyBasename"].includes(String(key)))
+    ) {
+      return invalid(
+        "Inspection requires only rootPath, fileBasename, and optional policyBasename.",
+      );
+    }
+    const capture = (key: "rootPath" | "fileBasename" | "policyBasename"): CapturedField => {
+      const descriptor = descriptors[key];
+      if (descriptor === undefined) return { kind: "absent" };
+      if (descriptor.enumerable !== true) {
+        return { kind: "invalid", detail: `The ${key} field must be an enumerable data field.` };
+      }
+      if (
+        descriptor.get !== undefined ||
+        descriptor.set !== undefined ||
+        !("value" in descriptor)
+      ) {
+        return { kind: "invalid", detail: `The ${key} field must not be an accessor.` };
+      }
+      const captured: unknown = descriptor.value;
+      if (typeof captured !== "string") {
+        return { kind: "invalid", detail: `The ${key} field must be a string.` };
+      }
+      if (captured.includes("\0")) {
+        return { kind: "invalid", detail: `The ${key} field must not contain a NUL byte.` };
+      }
+      return { kind: "captured", value: captured };
+    };
+    const rootPath = capture("rootPath");
+    if (rootPath.kind === "invalid") return invalid(rootPath.detail);
+    if (rootPath.kind === "absent" || rootPath.value.length === 0) {
+      return invalid("The rootPath field must be a non-empty string.");
+    }
+    const fileBasename = capture("fileBasename");
+    if (fileBasename.kind === "invalid") return invalid(fileBasename.detail);
+    if (fileBasename.kind === "absent") {
+      return invalid("The fileBasename field must be a string.");
+    }
+    const policyBasename = capture("policyBasename");
+    if (policyBasename.kind === "invalid") return invalid(policyBasename.detail);
+    return {
+      ok: true,
+      snapshot: Object.freeze({
+        rootPath: rootPath.value,
+        fileBasename: fileBasename.value,
+        ...(policyBasename.kind === "captured" ? { policyBasename: policyBasename.value } : {}),
+      }),
+    };
+  } catch {
+    return invalid("Observing the inspection request threw.");
   }
-  const record = value as Readonly<Record<string, unknown>>;
-  return (
-    typeof record.rootPath === "string" &&
-    record.rootPath.length > 0 &&
-    !record.rootPath.includes("\0") &&
-    typeof record.fileBasename === "string" &&
-    (record.policyBasename === undefined || typeof record.policyBasename === "string")
-  );
 };
 
 const decodeUtf8 = (
@@ -545,27 +622,26 @@ const makeLocalFileStoreWithProbe = (
   const inspectLocalDocument = (
     request: InspectLocalDocumentRequest,
   ): Effect.Effect<InspectedLocalDocument, LocalDocumentInspectionFailure> => {
-    if (!isInspectionRequest(request)) {
-      return Effect.fail(
-        rejected(
-          "invalid_inspection_request",
-          "Inspection requires only rootPath, fileBasename, and optional policyBasename.",
-        ),
-      );
+    const decodedRequest = decodeInspectionRequest(request);
+    if (!decodedRequest.ok) {
+      return Effect.fail(rejected("invalid_inspection_request", decodedRequest.detail));
     }
-    const fileBasename = decodeSafeBasename(request.fileBasename);
+    const { rootPath } = decodedRequest.snapshot;
+    const fileBasename = decodeSafeBasename(decodedRequest.snapshot.fileBasename);
     if (!fileBasename.ok) {
       return Effect.fail(rejected(fileBasename.code, fileBasename.detail));
     }
     const policyBasename =
-      request.policyBasename === undefined ? undefined : decodeSafeBasename(request.policyBasename);
+      decodedRequest.snapshot.policyBasename === undefined
+        ? undefined
+        : decodeSafeBasename(decodedRequest.snapshot.policyBasename);
     if (policyBasename !== undefined && !policyBasename.ok) {
       return Effect.fail(rejected(policyBasename.code, policyBasename.detail));
     }
 
     return Effect.scoped(
       Effect.gen(function* () {
-        const root = yield* openRoot(request.rootPath);
+        const root = yield* openRoot(rootPath);
         const file = yield* root.readRegularFile(fileBasename.basename);
         const policyFile =
           policyBasename === undefined
