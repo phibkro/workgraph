@@ -5,11 +5,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
 import { Effect, Result } from "effect";
+import { runLocalCli } from "../src/cli/local-command.ts";
 import { createGenesisDocument, type LocalWorkGraphDocument } from "../src/core/local-command.ts";
 import type { WorkGraph } from "../src/core/model.ts";
 import { attachPolicyRegistryDigest, resolvePolicyRegistry } from "../src/core/policy-registry.ts";
 import { encodeLocalDocument, sha256Text } from "../src/local/document-codec.ts";
 import {
+  LocalFileStore,
   makeLocalFileStore,
   type ExclusiveFenceLockApi,
   type InspectLocalDocumentRequest,
@@ -124,6 +126,48 @@ test("inspection returns exact immutable document, graph, file, and registry ide
   assert.equal(Object.isFrozen(inspected), true);
   assert.equal(Object.isFrozen(inspected.document.graph), true);
   assert.equal(Reflect.set(inspected.document, "revision", 1), false);
+});
+
+test("the shared local CLI emits one deterministic JSON inspection outcome", async () => {
+  const rootPath = join(fixtureRoot, "cli-inspection");
+  await mkdir(rootPath);
+  const document = createGenesisDocument(graph(), sha256Text);
+  await writeDocument(rootPath, document);
+
+  const inspect = () =>
+    Effect.runPromise(
+      runLocalCli(["inspect", "--root", rootPath, "--file", "workgraph.json"]).pipe(
+        Effect.provideService(LocalFileStore, store),
+      ),
+    );
+  const first = await inspect();
+  const second = await inspect();
+  assert.equal(first.exitCode, 0);
+  assert.equal(first.stdout, second.stdout);
+  assert.equal(first.stdout.endsWith("\n"), true);
+  const decoded = JSON.parse(first.stdout) as {
+    readonly revision: number;
+    readonly identity: { readonly graphDigest: string };
+  };
+  assert.equal(Reflect.get(decoded, "_tag"), "Inspected");
+  assert.equal(decoded.revision, 0);
+  assert.equal(decoded.identity.graphDigest, document.graphDigest);
+
+  const absent = await Effect.runPromise(
+    runLocalCli(["inspect", "--root", rootPath, "--file", "absent.json"]).pipe(
+      Effect.provideService(LocalFileStore, store),
+    ),
+  );
+  assert.equal(absent.exitCode, 2);
+  assert.equal(JSON.parse(absent.stdout).code, "child_absent");
+
+  const invalid = await Effect.runPromise(
+    runLocalCli(["inspect", "--root", rootPath, "--file"]).pipe(
+      Effect.provideService(LocalFileStore, store),
+    ),
+  );
+  assert.equal(invalid.exitCode, 64);
+  assert.equal(JSON.parse(invalid.stdout).code, "invalid_cli_use");
 });
 
 test("inspection keeps request, absence, other-file, and document failures typed", async () => {
