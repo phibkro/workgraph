@@ -1,12 +1,12 @@
 # Plan 0002: local command loop
 
-Status: recut contract frozen, implementation not present
+Status: second recut contract frozen, implementation not present
 
 Frozen base: `ba9fecdd56a3a0b592604e79b55715363e6ee5f3`
 
 Contract: `design-specs/0002-local-command-loop.md`
 
-## Independent contract review
+## First independent contract review
 
 Reviewed head: `24a8e3a243a414f46dc5279c3723ea6bd7bd19b7`
 
@@ -21,6 +21,28 @@ The review found four blocking gaps:
 
 This recut resolves each gap in the frozen contract. The review verdict remains
 an observation about the rejected head. It is not an acceptance of this recut.
+
+## Second independent contract review
+
+Reviewed head: `800d0f1e998e6c61dfb5f123aaf1aa244b4707d7`
+
+Verdict: `CHANGES_REQUIRED`
+
+The second review found four blocking gaps:
+
+1. Receipt-prefix verification was quadratic under the public input bounds.
+2. Genesis crash residue had no executable recovery protocol.
+3. Numeric-exhaustion decisions were unreachable through public decoding.
+4. Projection writes had no total partial-output failure observations.
+
+This recut replaces prefix reconstruction with an O(n) event chain. It adds
+genesis recovery and total projection publication outcomes.
+
+It also removes unreachable numeric-exhaustion decisions. Public collection
+bounds now own that rejection.
+
+The verdict remains an observation about `800d0f1`. It is not acceptance of
+this recut.
 
 ## Product dependency
 
@@ -58,6 +80,7 @@ The Control Room adapter requires both products. It is not part of 0002.
 - Move Orchard rules from the module-global map to an explicit fixture value.
 - Add local document, identity, receipt, and command types.
 - Add deterministic genesis and coherent receipt-chain validation.
+- Use one append-verifiable event chain with a counted O(n) work bound.
 - Add the pure append decision.
 - Add prefix, correction, registry conflict, and idempotency tests.
 
@@ -75,6 +98,7 @@ The Control Room adapter requires both products. It is not part of 0002.
 - Add Linux retained-directory-handle custody.
 - Add lock, temporary-file, sync, rename, and read-back handling.
 - Add total pre-rename and unknown post-rename outcomes.
+- Add exact genesis finalize and abort recovery.
 - Add ancestor-swap, link, command-file, and cleanup adversaries.
 
 ### Slice 4: product surfaces
@@ -82,6 +106,8 @@ The Control Room adapter requires both products. It is not part of 0002.
 - Add the shared CLI parser and JSON outcomes.
 - Keep the 0001 commands compatible.
 - Add digest-bound local projections and drift checks.
+- Publish projections through immutable snapshots and an atomic active pointer.
+- Add total projection failure and unknown outcomes.
 - Add the usage guide.
 - Add the local agent skill.
 
@@ -106,11 +132,12 @@ incompatibility.
 
 ## Review checkpoints
 
-1. Review registry normalization and receipt coherence before store work.
+1. Review registry normalization and O(n) receipt coherence before store work.
 2. Review the pure append decision before filesystem work.
-3. Review Linux handle-relative custody before a live adapter runs.
-4. Review every pre-rename fault outcome before CLI integration.
-5. Run an independent exact-head review before integration.
+3. Review genesis crash-state recovery before a live adapter runs.
+4. Review Linux handle-relative custody before a live adapter runs.
+5. Review every store and projection fault outcome before CLI integration.
+6. Run an independent exact-head review before integration.
 
 ## Deferred decisions
 
