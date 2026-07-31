@@ -52,8 +52,32 @@ const requiredImplementation = [
   "src/local/node-file-store.ts",
   "src/cli/local-command.ts",
   "tests/acceptance-0002.test.ts",
+  "tests/store-custody-0002.test.ts",
+  "tests/store-inspection-0002.test.ts",
+  "tests/projection-build-0002.test.ts",
+  "tests/store-mutation-0002.test.ts",
+  "tests/store-recovery-0002.test.ts",
+  "tests/projection-publication-0002.test.ts",
+  "tests/projection-recovery-0002.test.ts",
+  "tests/local-cli-0002.test.ts",
+  "tests/workgraph-local-skill-0002.test.ts",
   "docs/local-command-loop.md",
   "skills/workgraph-local/SKILL.md",
+] as const;
+
+const focusedAcceptance = [
+  "bun",
+  "test",
+  "tests/acceptance-0002.test.ts",
+  "tests/store-custody-0002.test.ts",
+  "tests/store-inspection-0002.test.ts",
+  "tests/projection-build-0002.test.ts",
+  "tests/store-mutation-0002.test.ts",
+  "tests/store-recovery-0002.test.ts",
+  "tests/projection-publication-0002.test.ts",
+  "tests/projection-recovery-0002.test.ts",
+  "tests/local-cli-0002.test.ts",
+  "tests/workgraph-local-skill-0002.test.ts",
 ] as const;
 
 const requireImplementation = Effect.gen(function* () {
@@ -119,7 +143,7 @@ const program = Effect.gen(function* () {
   yield* run("canonical-full-gate", ["bun", "run", "check"]);
   yield* requireImplementation;
   yield* requireRealNode;
-  yield* run("focused-acceptance", ["bun", "test", "tests/acceptance-0002.test.ts"]);
+  yield* run("focused-acceptance", focusedAcceptance);
   yield* Console.log(
     "accept:0002 completed in this process. The caller owns exact source, environment, output, and observation-time binding.",
   );

@@ -33,6 +33,11 @@ remains red. The remaining product work includes:
 - the usage guide and local agent skill;
 - the complete fault, interruption, and cross-process acceptance matrix.
 
+The acceptance hook names separate missing journeys for store mutation, store
+recovery, projection publication, projection recovery, the complete local CLI,
+and the local agent skill. File-presence scaffolding cannot turn the feature
+green while those journeys are absent.
+
 Do not move this plan to `plans/completed/` until every frozen acceptance item
 has direct executable evidence.
 
