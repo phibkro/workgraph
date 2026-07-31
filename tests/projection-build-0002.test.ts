@@ -75,6 +75,14 @@ test("projection build is deterministic and every file carries source identity",
   assert.equal(first.pointer.revision, 0);
   assert.equal(first.pointer.treeDigest, first.treeDigest);
   assert.equal(first.manifest.digest, first.treeDigest);
+  assert.equal(
+    first.treeDigest,
+    "sha256:5651a2e2b7e2edd92a4c35c99ae57c2fa486cc9dd3c1070de02607ea2bc0c511",
+  );
+  assert.equal(
+    sha256Text(first.pointerBytes),
+    "sha256:85fae556fd25b343f7bf62dedbd0f5f82076d673479694f05f9982fe5bb23447",
+  );
   assert.match(
     first.snapshotBasename,
     new RegExp(`^snapshot-${document.graphDigest.slice("sha256:".length)}-[0-9a-f]{64}$`, "u"),
