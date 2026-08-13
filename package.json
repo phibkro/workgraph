@@ -17,13 +17,13 @@
     "accept:0002": "bun scripts/accept-0002.ts"
   },
   "dependencies": {
-    "@effect/platform-bun": "4.0.0-beta.102",
-    "@effect/platform-node": "4.0.0-beta.102",
-    "effect": "4.0.0-beta.102",
+    "@effect/platform-bun": "4.0.0-rc.108",
+    "@effect/platform-node": "4.0.0-rc.108",
+    "effect": "4.0.0-rc.108",
     "fs-ext-extra-prebuilt": "2.2.10"
   },
   "devDependencies": {
-    "@effect/tsgo": "0.24.3",
+    "@effect/tsgo": "0.36.4",
     "@types/bun": "^1.3.0",
     "oxfmt": "0.61.0",
     "oxlint": "1.76.0",
